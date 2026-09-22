@@ -4,8 +4,13 @@ import 'package:path/path.dart' as p;
 
 /// Serviço com a lógica de dividir, juntar e visualizar arquivos.
 /// Replicado fielmente do app "Divisor de Arquivos" (com.direstudio.utils.filesplitter).
+///
+/// Todo o IO é assíncrono para não bloquear a interface e permitir
+/// atualização de progresso sem travar/crashar o app.
 class ArquivoUtils {
   ArquivoUtils._();
+
+  static const int _tamanhoBuffer = 1 << 20;
 
   /// Divide [arquivoOrigem] em [quantidade] partes.
   /// [inicio] é o índice da primeira parte (padrão original: 1).
@@ -42,8 +47,8 @@ class ArquivoUtils {
     }
     var leftover = tamanhoTotal % (tamanhoPorParte * quantidade);
 
-    final reader = origem.openSync();
-    final buffer = List<int>.filled(1 << 20, 0);
+    final reader = await origem.open();
+    final buffer = List<int>.filled(_tamanhoBuffer, 0);
     final partes = <String>[];
 
     try {
@@ -61,33 +66,33 @@ class ArquivoUtils {
         final caminhoParte = p.join(diretorioDestino, nomeParte);
         final destino = File(caminhoParte);
 
-        if (destino.existsSync()) {
+        if (await destino.exists()) {
           throw const FormatException(
               'O arquivo já existe. Escolha outro nome!');
         }
-        destino.createSync();
+        await destino.create();
 
-        final writer = destino.openSync(mode: FileMode.write);
+        final writer = await destino.open(mode: FileMode.write);
         var bytesEscritos = 0;
         try {
           while (bytesEscritos < tamanhoParte) {
             final restante = tamanhoParte - bytesEscritos;
             final leitura =
                 restante < buffer.length ? restante : buffer.length;
-            final lidos = reader.readIntoSync(buffer, 0, leitura);
+            final lidos = await reader.readInto(buffer, 0, leitura);
             if (lidos <= 0) break;
-            writer.writeFromSync(buffer, 0, lidos);
+            await writer.writeFrom(buffer, 0, lidos);
             bytesEscritos += lidos;
           }
         } finally {
-          writer.closeSync();
+          await writer.close();
         }
 
         partes.add(caminhoParte);
         aoProgresso?.call(i + 1, quantidade, (i + 1) / quantidade);
       }
     } finally {
-      reader.closeSync();
+      await reader.close();
     }
 
     return partes;
@@ -123,8 +128,8 @@ class ArquivoUtils {
     }
 
     final totalPartes = (tamanhoTotal / tamanhoPorParte).ceil();
-    final reader = origem.openSync();
-    final buffer = List<int>.filled(1 << 20, 0);
+    final reader = await origem.open();
+    final buffer = List<int>.filled(_tamanhoBuffer, 0);
     final partes = <String>[];
 
     try {
@@ -136,33 +141,33 @@ class ArquivoUtils {
         final caminhoParte = p.join(diretorioDestino, nomeParte);
         final destino = File(caminhoParte);
 
-        if (destino.existsSync()) {
+        if (await destino.exists()) {
           throw const FormatException(
               'O arquivo já existe. Escolha outro nome!');
         }
-        destino.createSync();
+        await destino.create();
 
-        final writer = destino.openSync(mode: FileMode.write);
+        final writer = await destino.open(mode: FileMode.write);
         var bytesEscritos = 0;
         try {
           while (bytesEscritos < tamanhoPorParte) {
             final restante = tamanhoPorParte - bytesEscritos;
             final leitura =
                 restante < buffer.length ? restante : buffer.length;
-            final lidos = reader.readIntoSync(buffer, 0, leitura);
+            final lidos = await reader.readInto(buffer, 0, leitura);
             if (lidos <= 0) break;
-            writer.writeFromSync(buffer, 0, lidos);
+            await writer.writeFrom(buffer, 0, lidos);
             bytesEscritos += lidos;
           }
         } finally {
-          writer.closeSync();
+          await writer.close();
         }
 
         partes.add(caminhoParte);
         aoProgresso?.call(i + 1, totalPartes, (i + 1) / totalPartes);
       }
     } finally {
-      reader.closeSync();
+      await reader.close();
     }
 
     return partes;
@@ -196,28 +201,28 @@ class ArquivoUtils {
     final caminhoSaida = p.join(diretorioDestino, nomeSaida);
     final destino = File(caminhoSaida);
 
-    if (destino.existsSync()) {
+    if (await destino.exists()) {
       throw const FormatException(
           'O arquivo já existe. Escolha outro nome!');
     }
-    destino.createSync();
+    await destino.create();
 
     final partesOrdenadas = _ordenarPartes(partes);
-    final writer = destino.openSync(mode: FileMode.write);
-    final buffer = List<int>.filled(1 << 20, 0);
+    final writer = await destino.open(mode: FileMode.write);
+    final buffer = List<int>.filled(_tamanhoBuffer, 0);
 
     try {
       for (var i = 0; i < partesOrdenadas.length; i++) {
         final origem = File(partesOrdenadas[i]);
-        final reader = origem.openSync();
+        final reader = await origem.open();
         try {
           while (true) {
-            final lidos = reader.readIntoSync(buffer, 0, buffer.length);
+            final lidos = await reader.readInto(buffer, 0, buffer.length);
             if (lidos <= 0) break;
-            writer.writeFromSync(buffer, 0, lidos);
+            await writer.writeFrom(buffer, 0, lidos);
           }
         } finally {
-          reader.closeSync();
+          await reader.close();
         }
         aoProgresso?.call(
           i + 1,
@@ -226,7 +231,7 @@ class ArquivoUtils {
         );
       }
     } finally {
-      writer.closeSync();
+      await writer.close();
     }
 
     return caminhoSaida;
