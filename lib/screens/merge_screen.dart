@@ -52,9 +52,9 @@ class _MergeScreenState extends State<MergeScreen> {
   }
 
   void _ordenarAZ() {
-    final ordenadas = [..._partesSelecionadas];
-    ordenadas.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    setState(() => _partesSelecionadas = ordenadas);
+    setState(
+      () => _partesSelecionadas = ArquivoUtils.ordenarPartes(_partesSelecionadas),
+    );
   }
 
   Future<void> _selecionarCaminho() async {

@@ -176,15 +176,16 @@ class ArquivoUtils {
   static int _multiplicadorDaUnidade(String unidade) {
     switch (unidade.toUpperCase()) {
       case 'KB':
-        return 1024;
+        return 1000;
       case 'MB':
-        return 1024 * 1024;
+        return 1000000;
       default:
         return 1;
     }
   }
 
-  /// Junta [partes] em um único arquivo.
+  /// Junta [partes] em um único arquivo, na ordem em que foram passadas
+  /// (a ordenação é responsabilidade da interface, como no app original).
   /// Nome final: "nome" ou "nome.extensao" (o original usava nome + "_merge").
   static Future<String> juntarArquivos({
     required List<String> partes,
@@ -207,13 +208,12 @@ class ArquivoUtils {
     }
     await destino.create();
 
-    final partesOrdenadas = _ordenarPartes(partes);
     final writer = await destino.open(mode: FileMode.write);
     final buffer = List<int>.filled(_tamanhoBuffer, 0);
 
     try {
-      for (var i = 0; i < partesOrdenadas.length; i++) {
-        final origem = File(partesOrdenadas[i]);
+      for (var i = 0; i < partes.length; i++) {
+        final origem = File(partes[i]);
         final reader = await origem.open();
         try {
           while (true) {
@@ -226,8 +226,8 @@ class ArquivoUtils {
         }
         aoProgresso?.call(
           i + 1,
-          partesOrdenadas.length,
-          (i + 1) / partesOrdenadas.length,
+          partes.length,
+          (i + 1) / partes.length,
         );
       }
     } finally {
@@ -235,6 +235,12 @@ class ArquivoUtils {
     }
 
     return caminhoSaida;
+  }
+
+  /// Ordena [partes] de forma natural (001, 002, ..., 010, ...).
+  /// Usado pelo botão de ordenação da interface, como o SortDialog original.
+  static List<String> ordenarPartes(List<String> partes) {
+    return _ordenarPartes(partes);
   }
 
   /// Lê e retorna o conteúdo textual de [caminho] (máx. ~10 MB).
