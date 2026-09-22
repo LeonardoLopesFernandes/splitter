@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
+import '../services/permissao_utils.dart';
 import '../widgets/theme_widgets.dart';
 
 class SplitScreen extends StatefulWidget {
@@ -75,6 +76,17 @@ class _SplitScreenState extends State<SplitScreen> {
     final nome = _nomeController.text.trim();
     if (nome.isEmpty || _caminhoSaida == null || _arquivoSelecionado == null) {
       setState(() => _mensagemErro = 'Escolha nome, caminho e arquivo.');
+      return;
+    }
+
+    final temPermissao = await PermissaoUtils.solicitarAcessoArmazenamento();
+    if (!mounted) return;
+    if (!temPermissao) {
+      setState(() {
+        _mensagemErro =
+            'Sem permissão de escrita. Vá em Configurações e permita '
+            '"Todos os arquivos" para o app.';
+      });
       return;
     }
 
