@@ -1,12 +1,10 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
+import '../widgets/theme_widgets.dart';
 
 class SplitScreen extends StatefulWidget {
   const SplitScreen({super.key});
@@ -17,17 +15,29 @@ class SplitScreen extends StatefulWidget {
 
 class _SplitScreenState extends State<SplitScreen> {
   String? _arquivoSelecionado;
-  final TextEditingController _tamanhoController =
-      TextEditingController(text: '10');
+  String? _caminhoSaida;
+  bool _porNumero = true;
   bool _processando = false;
   double _progresso = 0;
   String? _mensagemErro;
-  List<String> _partesCriadas = [];
-  String? _diretorioDestino;
+
+  final _numeroController = TextEditingController(text: '2');
+  final _tamanhoController = TextEditingController(text: '10');
+  String _unidade = 'MB';
+
+  final _nomeController = TextEditingController();
+  final _extensaoController = TextEditingController();
+  final _separadorController = TextEditingController(text: '_');
+  final _inicioController = TextEditingController(text: '1');
 
   @override
   void dispose() {
+    _numeroController.dispose();
     _tamanhoController.dispose();
+    _nomeController.dispose();
+    _extensaoController.dispose();
+    _separadorController.dispose();
+    _inicioController.dispose();
     super.dispose();
   }
 
@@ -39,77 +49,106 @@ class _SplitScreenState extends State<SplitScreen> {
     if (resultado == null || resultado.files.isEmpty) return;
     setState(() {
       _arquivoSelecionado = resultado.files.single.path;
-      _partesCriadas = [];
+      _mensagemErro = null;
+      if (_nomeController.text.isEmpty && _arquivoSelecionado != null) {
+        _nomeController.text = p.basenameWithoutExtension(_arquivoSelecionado!);
+        _extensaoController.text =
+            p.extension(_arquivoSelecionado!).replaceAll('.', '');
+      }
+    });
+  }
+
+  Future<void> _selecionarCaminho() async {
+    final caminho = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Selecione a pasta de destino',
+    );
+    if (caminho == null || caminho.isEmpty) return;
+    setState(() {
+      _caminhoSaida = caminho;
       _mensagemErro = null;
     });
   }
 
   Future<void> _dividir() async {
-    if (_arquivoSelecionado == null) {
-      setState(() => _mensagemErro = 'Selecione um arquivo primeiro.');
+    setState(() => _mensagemErro = null);
+
+    final nome = _nomeController.text.trim();
+    if (nome.isEmpty || _caminhoSaida == null || _arquivoSelecionado == null) {
+      setState(() => _mensagemErro = 'Escolha nome, caminho e arquivo.');
       return;
     }
 
-    final tamanhoMb = double.tryParse(_tamanhoController.text.trim());
-    if (tamanhoMb == null || tamanhoMb <= 0) {
-      setState(() => _mensagemErro = 'Informe um tamanho válido em MB.');
-      return;
-    }
+    final inicio = int.tryParse(_inicioController.text.trim()) ?? 1;
+    final separador =
+        _separadorController.text.isEmpty ? '' : _separadorController.text;
+    final extensao = _extensaoController.text.trim();
 
     setState(() {
       _processando = true;
       _progresso = 0;
-      _mensagemErro = null;
-      _partesCriadas = [];
     });
 
     try {
-      final dirDocs = await getApplicationDocumentsDirectory();
-      _diretorioDestino = dirDocs.path;
-
-      final partes = await ArquivoUtils.dividirArquivo(
-        arquivoOrigem: _arquivoSelecionado!,
-        diretorioDestino: _diretorioDestino!,
-        tamanhoMb: tamanhoMb,
-        aoProgresso: (parte, total, percentual) {
-          setState(() => _progresso = percentual);
-        },
-      );
+      List<String> partes;
+      if (_porNumero) {
+        final quantidade = int.tryParse(_numeroController.text.trim());
+        if (quantidade == null || quantidade <= 0) {
+          throw const FormatException('Número de arquivos inválido.');
+        }
+        partes = await ArquivoUtils.dividirPorNumero(
+          arquivoOrigem: _arquivoSelecionado!,
+          diretorioDestino: _caminhoSaida!,
+          nome: nome,
+          separador: separador,
+          extensao: extensao,
+          inicio: inicio,
+          quantidade: quantidade,
+          aoProgresso: (parte, total, percentual) {
+            if (mounted) setState(() => _progresso = percentual);
+          },
+        );
+      } else {
+        final tamanho = double.tryParse(_tamanhoController.text.trim());
+        if (tamanho == null || tamanho <= 0) {
+          throw const FormatException('Tamanho da parte inválido.');
+        }
+        partes = await ArquivoUtils.dividirPorTamanho(
+          arquivoOrigem: _arquivoSelecionado!,
+          diretorioDestino: _caminhoSaida!,
+          nome: nome,
+          separador: separador,
+          extensao: extensao,
+          inicio: inicio,
+          tamanho: tamanho,
+          unidade: _unidade,
+          aoProgresso: (parte, total, percentual) {
+            if (mounted) setState(() => _progresso = percentual);
+          },
+        );
+      }
 
       if (!mounted) return;
       setState(() {
-        _partesCriadas = partes;
         _processando = false;
+        _mensagemErro = null;
       });
-      _mostrarResultado();
+      _mostrarResultado(partes);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _processando = false;
-        _mensagemErro = 'Erro ao dividir: $e';
+        _mensagemErro = 'Falha ao dividir - $e';
       });
     }
   }
 
-  void _mostrarResultado() {
-    final tamanhoTotal = File(_arquivoSelecionado!).lengthSync();
+  void _mostrarResultado(List<String> partes) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Divisão concluída'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Arquivo: ${p.basename(_arquivoSelecionado!)}'
-                '\nTamanho: ${ArquivoUtils.formatarBytes(tamanhoTotal)}'
-                '\nPartes criadas: ${_partesCriadas.length}'
-                '\nPasta: $_diretorioDestino',
-              ),
-            ],
-          ),
+        title: const Text('Divisão concluída!'),
+        content: Text(
+          '${partes.length} parte(s) criada(s) em:\n$_caminhoSaida',
         ),
         actions: [
           TextButton(
@@ -118,10 +157,7 @@ class _SplitScreenState extends State<SplitScreen> {
           ),
           FilledButton(
             onPressed: () async {
-              await Share.shareXFiles(
-                _partesCriadas.map((parte) => XFile(parte)).toList(),
-                text: 'Partes do arquivo ${p.basename(_arquivoSelecionado!)}',
-              );
+              await Share.shareXFiles(partes.map((p) => XFile(p)).toList());
             },
             child: const Text('Compartilhar'),
           ),
@@ -133,67 +169,182 @@ class _SplitScreenState extends State<SplitScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dividir arquivos grandes')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            OutlinedButton.icon(
-              onPressed: _processando ? null : _selecionarArquivo,
-              icon: const Icon(Icons.folder_open),
-              label: Text(
-                _arquivoSelecionado == null
-                    ? 'Selecionar arquivo'
-                    : p.basename(_arquivoSelecionado!),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _cardEntrada(),
+                  const SizedBox(height: 12),
+                  _cardDividirPor(),
+                  const SizedBox(height: 12),
+                  _cardSaida(),
+                  if (_processando) ...[
+                    const SizedBox(height: 16),
+                    LinearProgressIndicator(
+                      value: _progresso,
+                      color: const Color(0xFF1FB196),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Dividindo... ${(_progresso * 100).toStringAsFixed(0)}%',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFF8E9BA8)),
+                    ),
+                  ],
+                  if (_mensagemErro != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _mensagemErro!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFFEF5350)),
+                    ),
+                  ],
+                ],
               ),
             ),
-            if (_arquivoSelecionado != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Tamanho: '
-                '${ArquivoUtils.formatarBytes(File(_arquivoSelecionado!).lengthSync())}',
-                style: Theme.of(context).textTheme.bodySmall,
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: BotaoPrincipal(
+                rotulo: 'DIVIDIR',
+                onPressed: _processando ? null : _dividir,
               ),
-            ],
-            const SizedBox(height: 16),
-            TextField(
-              controller: _tamanhoController,
-              enabled: !_processando,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Tamanho de cada parte (MB)',
-                helperText: 'Ex.: 10 = partes de 10 megabytes',
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (_processando) ...[
-              LinearProgressIndicator(value: _progresso),
-              const SizedBox(height: 8),
-              Text(
-                'Dividindo... ${(_progresso * 100).toStringAsFixed(0)}%',
-                textAlign: TextAlign.center,
-              ),
-            ],
-            if (_mensagemErro != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _mensagemErro!,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                ),
-              ),
-            ],
-            const Spacer(),
-            FilledButton.icon(
-              onPressed: _processando ? null : _dividir,
-              icon: const Icon(Icons.call_split),
-              label: const Text('Dividir arquivo'),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _cardEntrada() {
+    return CardArquivoEntrada(
+      icone: 'assets/icons/ic_input.png',
+      titulo: 'Arquivo de entrada',
+      botao: 'SELECIONAR',
+      texto: _arquivoSelecionado == null
+          ? 'Nenhum arquivo selecionado'
+          : p.basename(_arquivoSelecionado!),
+      onBotao: _selecionarArquivo,
+    );
+  }
+
+  Widget _cardDividirPor() {
+    return ThemeCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TituloCard('Dividir por'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              OpcaoRadio(
+                rotulo: 'Número de arquivos',
+                valor: _porNumero,
+                onChanged: (_) => setState(() => _porNumero = true),
+              ),
+              const SizedBox(width: 20),
+              OpcaoRadio(
+                rotulo: 'Tamanho',
+                valor: !_porNumero,
+                onChanged: (_) => setState(() => _porNumero = false),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_porNumero)
+            CampoLinha(
+              rotulo: 'Número de arquivos:',
+              controller: _numeroController,
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: CampoLinha(
+                    rotulo: 'Tamanho:',
+                    controller: _tamanhoController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _unidade,
+                  dropdownColor: const Color(0xFF232D37),
+                  items: ['B', 'KB', 'MB']
+                      .map(
+                        (u) => DropdownMenuItem(value: u, child: Text(u)),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _unidade = v ?? 'MB'),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardSaida() {
+    return ThemeCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TituloCard('Arquivos de saída'),
+          const SizedBox(height: 8),
+          CampoLinha(
+            rotulo: 'Nome:',
+            controller: _nomeController,
+          ),
+          CampoLinha(
+            rotulo: 'Extensão:',
+            controller: _extensaoController,
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: CampoLinha(
+                  rotulo: 'Separador:',
+                  controller: _separadorController,
+                  centralizado: true,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: CampoLinha(
+                  rotulo: 'Início:',
+                  controller: _inicioController,
+                  centralizado: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Caminho: ${_caminhoSaida ?? 'Não selecionado'}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8E9BA8),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              BotaoTeal(
+                rotulo: 'SELECIONAR',
+                onPressed: _selecionarCaminho,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

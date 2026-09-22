@@ -3,105 +3,230 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 /// Serviço com a lógica de dividir, juntar e visualizar arquivos.
+/// Replicado fielmente do app "Divisor de Arquivos" (com.direstudio.utils.filesplitter).
 class ArquivoUtils {
   ArquivoUtils._();
 
-  /// Divide [arquivoOrigem] em partes de [tamanhoMb] megabytes.
-  /// Retorna a lista de caminhos das partes criadas.
-  static Future<List<String>> dividirArquivo({
+  /// Divide [arquivoOrigem] em [quantidade] partes.
+  /// [inicio] é o índice da primeira parte (padrão original: 1).
+  /// [separador] é o texto entre nome e número (padrão original: "_").
+  /// [extensao] vazia = partes sem extensão; senão "nome_separador_numero.ext".
+  /// Distribui o resto (leftover) uma parte por vez, como o original.
+  static Future<List<String>> dividirPorNumero({
     required String arquivoOrigem,
     required String diretorioDestino,
-    required double tamanhoMb,
+    required String nome,
+    required String separador,
+    required String extensao,
+    required int inicio,
+    required int quantidade,
     void Function(int parte, int total, double percentual)? aoProgresso,
   }) async {
     final origem = File(arquivoOrigem);
     final tamanhoTotal = await origem.length();
-    if (tamanhoTotal == 0) {
-      throw const FormatException('O arquivo selecionado está vazio.');
+    if (tamanhoTotal <= 0) {
+      throw const FormatException(
+          'Arquivo inválido ou vazio. Selecione um arquivo válido.');
+    }
+    if (quantidade <= 0) {
+      throw const FormatException('Número de arquivos inválido.');
+    }
+    if (tamanhoTotal < quantidade) {
+      throw const FormatException(
+          'O número de arquivos não pode ser maior que o tamanho do arquivo.');
     }
 
-    final bytesPorParte = (tamanhoMb * 1024 * 1024).round();
-    if (bytesPorParte <= 0) {
-      throw const FormatException('Informe um tamanho válido.');
+    final tamanhoPorParte = tamanhoTotal ~/ quantidade;
+    if (tamanhoPorParte <= 0) {
+      throw const FormatException('Tamanho da parte inválido.');
     }
+    var leftover = tamanhoTotal % (tamanhoPorParte * quantidade);
 
-    final nomeBase = p.basenameWithoutExtension(arquivoOrigem);
-    final extensao = p.extension(arquivoOrigem);
-    final totalPartes = (tamanhoTotal / bytesPorParte).ceil();
-    final digitos = totalPartes.toString().length;
-
-    final origemReader = origem.openSync();
+    final reader = origem.openSync();
     final buffer = List<int>.filled(1 << 20, 0);
     final partes = <String>[];
 
     try {
-      for (var i = 1; i <= totalPartes; i++) {
-        final nomeParte =
-            '${nomeBase}_parte${i.toString().padLeft(digitos, '0')}$extensao';
+      for (var i = 0; i < quantidade; i++) {
+        var tamanhoParte = tamanhoPorParte;
+        if (leftover > 0) {
+          leftover--;
+          tamanhoParte += 1;
+        }
+
+        final numero = inicio + i;
+        final nomeParte = extensao.isEmpty
+            ? '$nome$separador$numero'
+            : '$nome$separador$numero.$extensao';
         final caminhoParte = p.join(diretorioDestino, nomeParte);
         final destino = File(caminhoParte);
-        final destinoWriter = destino.openSync(mode: FileMode.write);
-        var bytesEscritos = 0;
 
+        if (destino.existsSync()) {
+          throw const FormatException(
+              'O arquivo já existe. Escolha outro nome!');
+        }
+        destino.createSync();
+
+        final writer = destino.openSync(mode: FileMode.write);
+        var bytesEscritos = 0;
         try {
-          while (bytesEscritos < bytesPorParte) {
-            final restante = bytesPorParte - bytesEscritos;
+          while (bytesEscritos < tamanhoParte) {
+            final restante = tamanhoParte - bytesEscritos;
             final leitura =
                 restante < buffer.length ? restante : buffer.length;
-            final lidos = origemReader.readIntoSync(buffer, 0, leitura);
+            final lidos = reader.readIntoSync(buffer, 0, leitura);
             if (lidos <= 0) break;
-            destinoWriter.writeFromSync(buffer, 0, lidos);
+            writer.writeFromSync(buffer, 0, lidos);
             bytesEscritos += lidos;
           }
         } finally {
-          destinoWriter.closeSync();
+          writer.closeSync();
         }
 
         partes.add(caminhoParte);
-        aoProgresso?.call(i, totalPartes, i / totalPartes);
+        aoProgresso?.call(i + 1, quantidade, (i + 1) / quantidade);
       }
     } finally {
-      origemReader.closeSync();
+      reader.closeSync();
     }
 
     return partes;
   }
 
-  /// Junta [partes] em um único arquivo [nomeSaida] no [diretorioDestino].
-  /// Retorna o caminho do arquivo criado.
+  /// Divide [arquivoOrigem] em partes de [tamanho] na [unidade] ("B", "KB", "MB").
+  static Future<List<String>> dividirPorTamanho({
+    required String arquivoOrigem,
+    required String diretorioDestino,
+    required String nome,
+    required String separador,
+    required String extensao,
+    required int inicio,
+    required double tamanho,
+    required String unidade,
+    void Function(int parte, int total, double percentual)? aoProgresso,
+  }) async {
+    final origem = File(arquivoOrigem);
+    final tamanhoTotal = await origem.length();
+    if (tamanhoTotal <= 0) {
+      throw const FormatException(
+          'Arquivo inválido ou vazio. Selecione um arquivo válido.');
+    }
+
+    final multiplicador = _multiplicadorDaUnidade(unidade);
+    final tamanhoPorParte = (tamanho * multiplicador).round();
+    if (tamanhoPorParte <= 0) {
+      throw const FormatException('Tamanho da parte inválido.');
+    }
+    if (tamanhoPorParte > tamanhoTotal) {
+      throw const FormatException(
+          'O tamanho da parte não pode ser maior que o arquivo.');
+    }
+
+    final totalPartes = (tamanhoTotal / tamanhoPorParte).ceil();
+    final reader = origem.openSync();
+    final buffer = List<int>.filled(1 << 20, 0);
+    final partes = <String>[];
+
+    try {
+      for (var i = 0; i < totalPartes; i++) {
+        final numero = inicio + i;
+        final nomeParte = extensao.isEmpty
+            ? '$nome$separador$numero'
+            : '$nome$separador$numero.$extensao';
+        final caminhoParte = p.join(diretorioDestino, nomeParte);
+        final destino = File(caminhoParte);
+
+        if (destino.existsSync()) {
+          throw const FormatException(
+              'O arquivo já existe. Escolha outro nome!');
+        }
+        destino.createSync();
+
+        final writer = destino.openSync(mode: FileMode.write);
+        var bytesEscritos = 0;
+        try {
+          while (bytesEscritos < tamanhoPorParte) {
+            final restante = tamanhoPorParte - bytesEscritos;
+            final leitura =
+                restante < buffer.length ? restante : buffer.length;
+            final lidos = reader.readIntoSync(buffer, 0, leitura);
+            if (lidos <= 0) break;
+            writer.writeFromSync(buffer, 0, lidos);
+            bytesEscritos += lidos;
+          }
+        } finally {
+          writer.closeSync();
+        }
+
+        partes.add(caminhoParte);
+        aoProgresso?.call(i + 1, totalPartes, (i + 1) / totalPartes);
+      }
+    } finally {
+      reader.closeSync();
+    }
+
+    return partes;
+  }
+
+  static int _multiplicadorDaUnidade(String unidade) {
+    switch (unidade.toUpperCase()) {
+      case 'KB':
+        return 1024;
+      case 'MB':
+        return 1024 * 1024;
+      default:
+        return 1;
+    }
+  }
+
+  /// Junta [partes] em um único arquivo.
+  /// Nome final: "nome" ou "nome.extensao" (o original usava nome + "_merge").
   static Future<String> juntarArquivos({
     required List<String> partes,
     required String diretorioDestino,
-    required String nomeSaida,
+    required String nome,
+    String extensao = '',
     void Function(int parte, int total, double percentual)? aoProgresso,
   }) async {
     if (partes.isEmpty) {
-      throw const FormatException('Nenhuma parte foi selecionada.');
+      throw const FormatException('Nenhum arquivo foi selecionado.');
     }
 
-    final partesOrdenadas = _ordenarPartes(partes);
+    final nomeSaida = extensao.isEmpty ? nome : '$nome.$extensao';
     final caminhoSaida = p.join(diretorioDestino, nomeSaida);
     final destino = File(caminhoSaida);
-    final destinoWriter = destino.openSync(mode: FileMode.write);
+
+    if (destino.existsSync()) {
+      throw const FormatException(
+          'O arquivo já existe. Escolha outro nome!');
+    }
+    destino.createSync();
+
+    final partesOrdenadas = _ordenarPartes(partes);
+    final writer = destino.openSync(mode: FileMode.write);
     final buffer = List<int>.filled(1 << 20, 0);
 
     try {
       for (var i = 0; i < partesOrdenadas.length; i++) {
         final origem = File(partesOrdenadas[i]);
-        final origemReader = origem.openSync();
+        final reader = origem.openSync();
         try {
           while (true) {
-            final lidos = origemReader.readIntoSync(buffer, 0, buffer.length);
+            final lidos = reader.readIntoSync(buffer, 0, buffer.length);
             if (lidos <= 0) break;
-            destinoWriter.writeFromSync(buffer, 0, lidos);
+            writer.writeFromSync(buffer, 0, lidos);
           }
         } finally {
-          origemReader.closeSync();
+          reader.closeSync();
         }
-        aoProgresso?.call(i + 1, partesOrdenadas.length, (i + 1) / partesOrdenadas.length);
+        aoProgresso?.call(
+          i + 1,
+          partesOrdenadas.length,
+          (i + 1) / partesOrdenadas.length,
+        );
       }
     } finally {
-      destinoWriter.closeSync();
+      writer.closeSync();
     }
 
     return caminhoSaida;
@@ -130,9 +255,8 @@ class ArquivoUtils {
     final tokensA = regex.allMatches(a).map((m) => m.group(0)!).toList();
     final tokensB = regex.allMatches(b).map((m) => m.group(0)!).toList();
 
-    final limite = tokensA.length < tokensB.length
-        ? tokensA.length
-        : tokensB.length;
+    final limite =
+        tokensA.length < tokensB.length ? tokensA.length : tokensB.length;
 
     for (var i = 0; i < limite; i++) {
       final ta = tokensA[i];

@@ -3,12 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:filesplitter_flutter/main.dart';
 
 void main() {
-  testWidgets('App inicia e mostra o título', (WidgetTester tester) async {
+  testWidgets('App inicia com as 4 abas', (WidgetTester tester) async {
     await tester.pumpWidget(const DivisorDeArquivosApp());
 
-    expect(find.text('Divisor de Arquivos'), findsOneWidget);
-    expect(find.text('Dividir arquivos grandes'), findsOneWidget);
-    expect(find.text('Juntar múltiplos arquivos'), findsOneWidget);
-    expect(find.text('Visualizar conteúdo'), findsOneWidget);
+    expect(find.text('Dividir'), findsWidgets);
+    expect(find.text('Unir'), findsOneWidget);
+    expect(find.text('Visualizar'), findsOneWidget);
+    expect(find.text('Premium'), findsOneWidget);
   });
 }
