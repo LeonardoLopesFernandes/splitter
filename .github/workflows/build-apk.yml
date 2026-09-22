@@ -10,6 +10,8 @@ jobs:
   build:
     name: Compilar APK (Release)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Fazer checkout do código
