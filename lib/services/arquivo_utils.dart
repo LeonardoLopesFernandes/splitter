@@ -25,7 +25,8 @@ class ArquivoUtils {
     required String extensao,
     required int inicio,
     required int quantidade,
-    void Function(int parte, int total, double percentual)? aoProgresso,
+    void Function(int bytesLidos, int bytesTotal, double percentual)?
+        aoProgresso,
   }) async {
     final origem = File(arquivoOrigem);
     final tamanhoTotal = await origem.length();
@@ -50,6 +51,7 @@ class ArquivoUtils {
     final reader = await origem.open();
     final buffer = List<int>.filled(_tamanhoBuffer, 0);
     final partes = <String>[];
+    var bytesLidosTotal = 0;
 
     try {
       for (var i = 0; i < quantidade; i++) {
@@ -83,13 +85,18 @@ class ArquivoUtils {
             if (lidos <= 0) break;
             await writer.writeFrom(buffer, 0, lidos);
             bytesEscritos += lidos;
+            bytesLidosTotal += lidos;
+            aoProgresso?.call(
+              bytesLidosTotal,
+              tamanhoTotal,
+              bytesLidosTotal / tamanhoTotal,
+            );
           }
         } finally {
           await writer.close();
         }
 
         partes.add(caminhoParte);
-        aoProgresso?.call(i + 1, quantidade, (i + 1) / quantidade);
       }
     } finally {
       await reader.close();
@@ -108,7 +115,8 @@ class ArquivoUtils {
     required int inicio,
     required double tamanho,
     required String unidade,
-    void Function(int parte, int total, double percentual)? aoProgresso,
+    void Function(int bytesLidos, int bytesTotal, double percentual)?
+        aoProgresso,
   }) async {
     final origem = File(arquivoOrigem);
     final tamanhoTotal = await origem.length();
@@ -131,6 +139,7 @@ class ArquivoUtils {
     final reader = await origem.open();
     final buffer = List<int>.filled(_tamanhoBuffer, 0);
     final partes = <String>[];
+    var bytesLidosTotal = 0;
 
     try {
       for (var i = 0; i < totalPartes; i++) {
@@ -158,13 +167,18 @@ class ArquivoUtils {
             if (lidos <= 0) break;
             await writer.writeFrom(buffer, 0, lidos);
             bytesEscritos += lidos;
+            bytesLidosTotal += lidos;
+            aoProgresso?.call(
+              bytesLidosTotal,
+              tamanhoTotal,
+              bytesLidosTotal / tamanhoTotal,
+            );
           }
         } finally {
           await writer.close();
         }
 
         partes.add(caminhoParte);
-        aoProgresso?.call(i + 1, totalPartes, (i + 1) / totalPartes);
       }
     } finally {
       await reader.close();
@@ -192,7 +206,8 @@ class ArquivoUtils {
     required String diretorioDestino,
     required String nome,
     String extensao = '',
-    void Function(int parte, int total, double percentual)? aoProgresso,
+    void Function(int bytesLidos, int bytesTotal, double percentual)?
+        aoProgresso,
   }) async {
     if (partes.isEmpty) {
       throw const FormatException('Nenhum arquivo foi selecionado.');
@@ -211,6 +226,12 @@ class ArquivoUtils {
     final writer = await destino.open(mode: FileMode.write);
     final buffer = List<int>.filled(_tamanhoBuffer, 0);
 
+    var bytesLidosTotal = 0;
+    var bytesTotal = 0;
+    for (final parte in partes) {
+      bytesTotal += await File(parte).length();
+    }
+
     try {
       for (var i = 0; i < partes.length; i++) {
         final origem = File(partes[i]);
@@ -220,27 +241,22 @@ class ArquivoUtils {
             final lidos = await reader.readInto(buffer, 0, buffer.length);
             if (lidos <= 0) break;
             await writer.writeFrom(buffer, 0, lidos);
+            bytesLidosTotal += lidos;
+            aoProgresso?.call(
+              bytesLidosTotal,
+              bytesTotal,
+              bytesTotal == 0 ? 1 : bytesLidosTotal / bytesTotal,
+            );
           }
         } finally {
           await reader.close();
         }
-        aoProgresso?.call(
-          i + 1,
-          partes.length,
-          (i + 1) / partes.length,
-        );
       }
     } finally {
       await writer.close();
     }
 
     return caminhoSaida;
-  }
-
-  /// Ordena [partes] de forma natural (001, 002, ..., 010, ...).
-  /// Usado pelo botão de ordenação da interface, como o SortDialog original.
-  static List<String> ordenarPartes(List<String> partes) {
-    return _ordenarPartes(partes);
   }
 
   /// Lê e retorna o conteúdo textual de [caminho] (máx. ~10 MB).
@@ -254,8 +270,9 @@ class ArquivoUtils {
     return arquivo.readAsString();
   }
 
-  /// Ordena nomes de partes de forma natural (001, 002, ..., 010, ...).
-  static List<String> _ordenarPartes(List<String> partes) {
+  /// Ordena [partes] de forma natural (001, 002, ..., 010, ...).
+  /// Usado pelo botão de ordenação da interface, como o SortDialog original.
+  static List<String> ordenarPartes(List<String> partes) {
     final ordenadas = [...partes];
     ordenadas.sort((a, b) => _compararNatural(a, b));
     return ordenadas;
@@ -292,5 +309,15 @@ class ArquivoUtils {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  /// Formata a data de modificação do arquivo no padrão dd/MM/yyyy, HH:mm:ss
+  /// (como o app original: "dd/MM/yyyy, hh:mm:ss").
+  static String formatarDataModificacao(File arquivo) {
+    final data = arquivo.lastModifiedSync();
+    String doisDigitos(int v) => v.toString().padLeft(2, '0');
+    return '${doisDigitos(data.day)}/${doisDigitos(data.month)}/'
+        '${data.year}, ${doisDigitos(data.hour)}:'
+        '${doisDigitos(data.minute)}:${doisDigitos(data.second)}';
   }
 }

@@ -191,6 +191,7 @@ class CardArquivoEntrada extends StatelessWidget {
     required this.onBotao,
     this.icone,
     this.subtitulo,
+    this.detalhes,
     this.acoesExtras = const [],
   });
 
@@ -199,6 +200,7 @@ class CardArquivoEntrada extends StatelessWidget {
   final String botao;
   final String texto;
   final String? subtitulo;
+  final Widget? detalhes;
   final VoidCallback onBotao;
   final List<Widget> acoesExtras;
 
@@ -221,9 +223,83 @@ class CardArquivoEntrada extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 4),
               child: Subtexto(subtitulo!, tamanho: 11),
             ),
-          Subtexto(texto),
+          if (detalhes != null)
+            detalhes!
+          else
+            Subtexto(texto),
         ],
       ),
+    );
+  }
+}
+
+/// Mostra os detalhes de um arquivo selecionado: nome, tamanho e data.
+class DetalhesArquivo extends StatelessWidget {
+  const DetalhesArquivo({
+    super.key,
+    required this.nome,
+    required this.tamanho,
+    required this.dataModificacao,
+    this.icone,
+  });
+
+  final String nome;
+  final String tamanho;
+  final String dataModificacao;
+  final String? icone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (icone != null) ...[
+          ImageIcon(
+            AssetImage(icone!),
+            size: 28,
+            color: const Color(0xFF5D7182),
+          ),
+          const SizedBox(width: 10),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                nome,
+                style: const TextStyle(
+                  color: Color(0xFF7D8F9F),
+                  fontSize: 14,
+                  letterSpacing: 0.5,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Text(
+                    '📄 $tamanho',
+                    style: const TextStyle(
+                      color: Color(0xFF5D7182),
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      '📅 $dataModificacao',
+                      style: const TextStyle(
+                        color: Color(0xFF5D7182),
+                        fontSize: 11,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

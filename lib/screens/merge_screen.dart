@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -5,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../widgets/modal_progresso.dart';
 import '../widgets/theme_widgets.dart';
 
 class MergeScreen extends StatefulWidget {
@@ -19,6 +22,8 @@ class _MergeScreenState extends State<MergeScreen> {
   String? _caminhoSaida;
   bool _processando = false;
   double _progresso = 0;
+  int _bytesLidos = 0;
+  int _bytesTotal = 1;
   String? _mensagemErro;
 
   final _nomeController = TextEditingController();
@@ -39,15 +44,22 @@ class _MergeScreenState extends State<MergeScreen> {
     );
     if (resultado == null || resultado.files.isEmpty) return;
     setState(() {
-      _partesSelecionadas = resultado.files
+      final novos = resultado.files
           .map((f) => f.path)
           .whereType<String>()
           .toList();
+      _partesSelecionadas = [..._partesSelecionadas, ...novos];
       _mensagemErro = null;
       if (_nomeController.text.isEmpty && _partesSelecionadas.isNotEmpty) {
         final base = p.basenameWithoutExtension(_partesSelecionadas.first);
         _nomeController.text = base.replaceAll(RegExp(r'(_parte|_\d+)'), '');
       }
+    });
+  }
+
+  void _removerParte(int indice) {
+    setState(() {
+      _partesSelecionadas.removeAt(indice);
     });
   }
 
@@ -91,7 +103,18 @@ class _MergeScreenState extends State<MergeScreen> {
     setState(() {
       _processando = true;
       _progresso = 0;
+      _bytesLidos = 0;
+      _bytesTotal = 1;
     });
+
+    void aoProgresso(int bytesLidos, int bytesTotal, double percentual) {
+      if (!mounted) return;
+      setState(() {
+        _bytesLidos = bytesLidos;
+        _bytesTotal = bytesTotal;
+        _progresso = percentual;
+      });
+    }
 
     try {
       final resultado = await ArquivoUtils.juntarArquivos(
@@ -99,9 +122,7 @@ class _MergeScreenState extends State<MergeScreen> {
         diretorioDestino: _caminhoSaida!,
         nome: nome,
         extensao: _extensaoController.text.trim(),
-        aoProgresso: (parte, total, percentual) {
-          if (mounted) setState(() => _progresso = percentual);
-        },
+        aoProgresso: aoProgresso,
       );
 
       if (!mounted) return;
@@ -146,126 +167,177 @@ class _MergeScreenState extends State<MergeScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
           children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  CardArquivoEntrada(
-                    icone: 'assets/icons/ic_folder_48dp.png',
-                    titulo: 'Arquivos de entrada',
-                    botao: 'SELECIONAR',
-                    acoesExtras: [
-                      BotaoTeal(rotulo: 'AZ', onPressed: _ordenarAZ),
-                    ],
-                    texto: _partesSelecionadas.isEmpty
-                        ? '0 arquivos selecionados.'
-                        : '${_partesSelecionadas.length} arquivo(s) selecionado(s).',
-                    onBotao: _selecionarPartes,
-                  ),
-                  if (_partesSelecionadas.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    ThemeCard(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 200),
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: _partesSelecionadas.length,
-                          itemBuilder: (ctx, i) => ListTile(
-                            dense: true,
-                            leading: const Icon(
-                              Icons.description,
-                              color: Color(0xFF8E9BA8),
-                            ),
-                            title: Text(
-                              p.basename(_partesSelecionadas[i]),
-                              style: const TextStyle(fontSize: 13),
-                              overflow: TextOverflow.ellipsis,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      CardArquivoEntrada(
+                        icone: 'assets/icons/ic_folder_48dp.png',
+                        titulo: 'Arquivos de entrada',
+                        botao: 'SELECIONAR',
+                        acoesExtras: [
+                          BotaoTeal(rotulo: 'AZ', onPressed: _ordenarAZ),
+                        ],
+                        texto: _partesSelecionadas.isEmpty
+                            ? '0 arquivos selecionados.'
+                            : '${_partesSelecionadas.length} arquivo(s) selecionado(s).',
+                        onBotao: _selecionarPartes,
+                      ),
+                      if (_partesSelecionadas.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ThemeCard(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 240),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: _partesSelecionadas.length,
+                              itemBuilder: (ctx, i) {
+                                final caminho = _partesSelecionadas[i];
+                                final arquivo = File(caminho);
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              p.basename(caminho),
+                                              style: const TextStyle(
+                                                color: Color(0xFFA0B0C0),
+                                                fontSize: 13,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${ArquivoUtils.formatarBytes(arquivo.lengthSync())}'
+                                              '  '
+                                              '${ArquivoUtils.formatarDataModificacao(arquivo)}',
+                                              style: const TextStyle(
+                                                color: Color(0xFF5D7182),
+                                                fontSize: 11,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () => _removerParte(i),
+                                        borderRadius: BorderRadius.circular(50),
+                                        child: Container(
+                                          width: 22,
+                                          height: 22,
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFFEF5350),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.close,
+                                            size: 14,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  ThemeCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const TituloCard('Arquivo de saída'),
-                        const SizedBox(height: 8),
-                        Row(
+                      ],
+                      const SizedBox(height: 12),
+                      ThemeCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: CampoLinha(
-                                rotulo: 'Nome:',
-                                controller: _nomeController,
-                              ),
+                            const TituloCard('Arquivo de saída'),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: CampoLinha(
+                                    rotulo: 'Nome:',
+                                    controller: _nomeController,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: CampoLinha(
+                                    rotulo: 'Extensão:',
+                                    controller: _extensaoController,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: CampoLinha(
-                                rotulo: 'Extensão:',
-                                controller: _extensaoController,
-                              ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Caminho: ${_caminhoSaida ?? 'Não selecionado'}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF8E9BA8),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                BotaoTeal(
+                                  rotulo: 'SELECIONAR',
+                                  onPressed: _selecionarCaminho,
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Caminho: ${_caminhoSaida ?? 'Não selecionado'}',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF8E9BA8),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            BotaoTeal(
-                              rotulo: 'SELECIONAR',
-                              onPressed: _selecionarCaminho,
-                            ),
-                          ],
+                      ),
+                      if (_mensagemErro != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _mensagemErro!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFFEF5350)),
                         ),
                       ],
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: BotaoPrincipal(
+                    rotulo: 'UNIR',
+                    onPressed: _processando ? null : _juntar,
+                  ),
+                ),
+              ],
+            ),
+            if (_processando)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: const Color(0x99000000),
+                  child: Center(
+                    child: ModalProgresso(
+                      percentual: _progresso,
+                      progresso: (_bytesLidos / (1000 * 1000)).round(),
+                      limite: (_bytesTotal / (1000 * 1000)).round(),
+                      titulo: 'Juntando...',
                     ),
                   ),
-                  if (_processando) ...[
-                    const SizedBox(height: 16),
-                    LinearProgressIndicator(
-                      value: _progresso,
-                      color: const Color(0xFF1FB196),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Juntando... ${(_progresso * 100).toStringAsFixed(0)}%',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFF8E9BA8)),
-                    ),
-                  ],
-                  if (_mensagemErro != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _mensagemErro!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFFEF5350)),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: BotaoPrincipal(
-                rotulo: 'UNIR',
-                onPressed: _processando ? null : _juntar,
-              ),
-            ),
           ],
         ),
       ),

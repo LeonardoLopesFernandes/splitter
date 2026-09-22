@@ -6,12 +6,13 @@ on:
     tags: [ 'v*' ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Compilar APK (Release)
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Fazer checkout do código
@@ -37,13 +38,32 @@ jobs:
       - name: Baixar dependências
         run: flutter pub get
 
+      - name: Configurar keystore a partir dos Secrets
+        run: |
+          RAW="${{ secrets.KEYSTORE_BASE64 }}"
+          CLEAN=$(echo "$RAW" | tr -d '\n\r\t ')
+          echo "$CLEAN" | base64 --decode > android/app/upload.keystore
+          echo "Keystore size: $(wc -c < android/app/upload.keystore) bytes"
+
+      - name: Verificar keystore
+        run: |
+          keytool -list -v -keystore android/app/upload.keystore \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.KEY_ALIAS }}" \
+            -keypass "${{ secrets.KEY_PASSWORD }}" 2>&1
+
       - name: Análise estática
         run: flutter analyze
 
       - name: Executar testes
         run: flutter test
 
-      - name: Compilar APK Release (arm64-v8a)
+      - name: Compilar APK Release assinado (arm64-v8a)
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_PATH: android/app/upload.keystore
         run: flutter build apk --release --split-per-abi --target-platform android-arm64
 
       - name: Enviar APK como artefato
@@ -56,5 +76,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: Divisor de Arquivos ${{ github.ref_name }}
           files: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

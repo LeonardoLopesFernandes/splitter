@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -5,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../widgets/modal_progresso.dart';
 import '../widgets/theme_widgets.dart';
 
 class SplitScreen extends StatefulWidget {
@@ -20,6 +23,8 @@ class _SplitScreenState extends State<SplitScreen> {
   bool _porNumero = true;
   bool _processando = false;
   double _progresso = 0;
+  int _bytesLidos = 0;
+  int _bytesTotal = 1;
   String? _mensagemErro;
 
   final _numeroController = TextEditingController(text: '2');
@@ -98,7 +103,18 @@ class _SplitScreenState extends State<SplitScreen> {
     setState(() {
       _processando = true;
       _progresso = 0;
+      _bytesLidos = 0;
+      _bytesTotal = 1;
     });
+
+    void aoProgresso(int bytesLidos, int bytesTotal, double percentual) {
+      if (!mounted) return;
+      setState(() {
+        _bytesLidos = bytesLidos;
+        _bytesTotal = bytesTotal;
+        _progresso = percentual;
+      });
+    }
 
     try {
       List<String> partes;
@@ -115,9 +131,7 @@ class _SplitScreenState extends State<SplitScreen> {
           extensao: extensao,
           inicio: inicio,
           quantidade: quantidade,
-          aoProgresso: (parte, total, percentual) {
-            if (mounted) setState(() => _progresso = percentual);
-          },
+          aoProgresso: aoProgresso,
         );
       } else {
         final tamanho = double.tryParse(_tamanhoController.text.trim());
@@ -133,9 +147,7 @@ class _SplitScreenState extends State<SplitScreen> {
           inicio: inicio,
           tamanho: tamanho,
           unidade: _unidade,
-          aoProgresso: (parte, total, percentual) {
-            if (mounted) setState(() => _progresso = percentual);
-          },
+          aoProgresso: aoProgresso,
         );
       }
 
@@ -183,49 +195,53 @@ class _SplitScreenState extends State<SplitScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
           children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _cardEntrada(),
-                  const SizedBox(height: 12),
-                  _cardDividirPor(),
-                  const SizedBox(height: 12),
-                  _cardSaida(),
-                  if (_processando) ...[
-                    const SizedBox(height: 16),
-                    LinearProgressIndicator(
-                      value: _progresso,
-                      color: const Color(0xFF1FB196),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Dividindo... ${(_progresso * 100).toStringAsFixed(0)}%',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFF8E9BA8)),
-                    ),
-                  ],
-                  if (_mensagemErro != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _mensagemErro!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFFEF5350)),
-                    ),
-                  ],
-                ],
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _cardEntrada(),
+                      const SizedBox(height: 12),
+                      _cardDividirPor(),
+                      const SizedBox(height: 12),
+                      _cardSaida(),
+                      if (_mensagemErro != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _mensagemErro!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFFEF5350)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: BotaoPrincipal(
+                    rotulo: 'DIVIDIR',
+                    onPressed: _processando ? null : _dividir,
+                  ),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: BotaoPrincipal(
-                rotulo: 'DIVIDIR',
-                onPressed: _processando ? null : _dividir,
+            if (_processando)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: const Color(0x99000000),
+                  child: Center(
+                    child: ModalProgresso(
+                      percentual: _progresso,
+                      progresso: (_bytesLidos / (1000 * 1000)).round(),
+                      limite: (_bytesTotal / (1000 * 1000)).round(),
+                    ),
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -233,13 +249,22 @@ class _SplitScreenState extends State<SplitScreen> {
   }
 
   Widget _cardEntrada() {
+    final arquivo = _arquivoSelecionado == null
+        ? null
+        : File(_arquivoSelecionado!);
     return CardArquivoEntrada(
       icone: 'assets/icons/ic_input.png',
       titulo: 'Arquivo de entrada',
       botao: 'SELECIONAR',
-      texto: _arquivoSelecionado == null
-          ? 'Nenhum arquivo selecionado'
-          : p.basename(_arquivoSelecionado!),
+      texto: 'Nenhum arquivo selecionado',
+      detalhes: arquivo == null
+          ? null
+          : DetalhesArquivo(
+              nome: p.basename(_arquivoSelecionado!),
+              tamanho: ArquivoUtils.formatarBytes(arquivo.lengthSync()),
+              dataModificacao:
+                  ArquivoUtils.formatarDataModificacao(arquivo),
+            ),
       onBotao: _selecionarArquivo,
     );
   }
