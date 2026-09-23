@@ -274,7 +274,10 @@ class _SplitScreenState extends State<SplitScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TituloCard('Dividir por'),
+          const TituloCard(
+            'Dividir por',
+            icone: 'assets/icons/ic_size.png',
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -332,7 +335,10 @@ class _SplitScreenState extends State<SplitScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TituloCard('Arquivos de saída'),
+          const TituloCard(
+            'Arquivos de saída',
+            icone: 'assets/icons/ic_output.png',
+          ),
           const SizedBox(height: 8),
           CampoLinha(
             rotulo: 'Nome:',
@@ -363,23 +369,21 @@ class _SplitScreenState extends State<SplitScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Caminho: ${_caminhoSaida ?? 'Não selecionado'}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF8E9BA8),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              BotaoTeal(
-                rotulo: 'SELECIONAR',
-                onPressed: _selecionarCaminho,
-              ),
-            ],
+          Text(
+            'Caminho: ${_caminhoSaida ?? 'Não selecionado'}',
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF8E9BA8),
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: BotaoTeal(
+              rotulo: 'SELECIONAR',
+              onPressed: _selecionarCaminho,
+            ),
           ),
         ],
       ),

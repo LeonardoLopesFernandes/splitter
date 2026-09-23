@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../widgets/dialog_ordenacao.dart';
 import '../widgets/modal_progresso.dart';
 
 class MergeScreen extends StatefulWidget {
@@ -69,11 +70,19 @@ class _MergeScreenState extends State<MergeScreen> {
     });
   }
 
-  void _ordenarAZ() {
-    setState(
-      () =>
-          _partesSelecionadas = ArquivoUtils.ordenarPartes(_partesSelecionadas),
+  Future<void> _ordenarAZ() async {
+    final resultado = await showDialog<ResultadoOrdenacao>(
+      context: context,
+      builder: (_) => const DialogOrdenacao(),
     );
+    if (resultado == null || !mounted) return;
+    setState(() {
+      _partesSelecionadas = ArquivoUtils.ordenarPartesPor(
+        partes: _partesSelecionadas,
+        criterio: resultado.criterio,
+        decrescente: resultado.decrescente,
+      );
+    });
   }
 
   Future<void> _selecionarCaminho() async {
@@ -237,8 +246,8 @@ class _MergeScreenState extends State<MergeScreen> {
         children: [
           const Row(
             children: [
-              Icon(
-                Icons.insert_drive_file_outlined,
+              ImageIcon(
+                AssetImage('assets/icons/ic_input.png'),
                 color: _headerTeal,
                 size: 20,
               ),
@@ -268,45 +277,9 @@ class _MergeScreenState extends State<MergeScreen> {
               ),
               Row(
                 children: [
-                  ElevatedButton(
-                    onPressed: _selecionarPartes,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryTeal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                    child: const Text(
-                      'SELECIONAR',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
+                  _botaoSelecionar(_selecionarPartes),
                   const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _ordenarAZ,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: _primaryTeal,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.sort_by_alpha,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                    ),
-                  ),
+                  _botaoAz(),
                 ],
               ),
             ],
@@ -406,7 +379,11 @@ class _MergeScreenState extends State<MergeScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.file_download_outlined, color: _headerTeal, size: 20),
+              ImageIcon(
+                AssetImage('assets/icons/ic_output.png'),
+                color: _headerTeal,
+                size: 20,
+              ),
               SizedBox(width: 8),
               Text(
                 'Arquivo de saída',
@@ -499,29 +476,7 @@ class _MergeScreenState extends State<MergeScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _selecionarCaminho,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryTeal,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: const Text(
-                  'SELECIONAR',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
+              _botaoSelecionar(_selecionarCaminho),
             ],
           ),
         ],
@@ -530,22 +485,68 @@ class _MergeScreenState extends State<MergeScreen> {
   }
 
   Widget _botaoJuntar() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: _processando ? null : _juntar,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _primaryTeal,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+    return Material(
+      color: _primaryTeal,
+      borderRadius: BorderRadius.circular(6),
+      elevation: 0,
+      child: InkWell(
+        onTap: _processando ? null : _juntar,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          width: double.infinity,
+          height: 48,
+          alignment: Alignment.center,
+          child: const Text(
+            'JUNTAR',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              letterSpacing: 0.8,
+            ),
+          ),
         ),
-        child: const Text(
-          'JUNTAR',
-          style: TextStyle(
+      ),
+    );
+  }
+
+  Widget _botaoSelecionar(VoidCallback? onPressed) {
+    return Material(
+      color: _primaryTeal,
+      borderRadius: BorderRadius.circular(6),
+      elevation: 0,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(6),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(
+            'SELECIONAR',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _botaoAz() {
+    return Material(
+      color: _primaryTeal,
+      borderRadius: BorderRadius.circular(6),
+      elevation: 0,
+      child: InkWell(
+        onTap: _ordenarAZ,
+        borderRadius: BorderRadius.circular(6),
+        child: const Padding(
+          padding: EdgeInsets.all(6),
+          child: ImageIcon(
+            AssetImage('assets/icons/ic_sort_name.png'),
             color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-            letterSpacing: 0.8,
+            size: 18,
           ),
         ),
       ),

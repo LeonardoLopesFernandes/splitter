@@ -61,7 +61,7 @@ class TituloCard extends StatelessWidget {
   Widget build(BuildContext context) => _TituloCardInterno(texto, icone: icone);
 }
 
-/// Botão teal compacto (ex.: "SELECIONAR").
+/// Botão teal compacto (ex.: "SELECIONAR"), cor sólida sem sombra.
 class BotaoTeal extends StatelessWidget {
   const BotaoTeal({
     super.key,
@@ -74,27 +74,31 @@ class BotaoTeal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        backgroundColor: const Color(0xFF139F86),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
-        ),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-          letterSpacing: 0.5,
+    return Material(
+      color: const Color(0xFF00897B),
+      borderRadius: BorderRadius.circular(6),
+      elevation: 0,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(
+            rotulo,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              letterSpacing: 0.5,
+            ),
+          ),
         ),
       ),
-      child: Text(rotulo),
     );
   }
 }
 
-/// Botão principal (largura total, teal, uppercase).
+/// Botão principal (largura total, teal, uppercase, sem sombra).
 class BotaoPrincipal extends StatelessWidget {
   const BotaoPrincipal({
     super.key,
@@ -107,40 +111,54 @@ class BotaoPrincipal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton(
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        backgroundColor: const Color(0xFF139F86),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
+    return Material(
+      color: const Color(0xFF00897B),
+      borderRadius: BorderRadius.circular(6),
+      elevation: 0,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          height: 48,
+          alignment: Alignment.center,
+          child: Text(
+            rotulo,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              letterSpacing: 0.5,
+            ),
+          ),
         ),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 15,
-          letterSpacing: 0.5,
-        ),
-        disabledBackgroundColor: const Color(0xFF0F836E),
       ),
-      child: Text(rotulo),
     );
   }
 }
 
 /// Subtexto (cinza claro).
 class Subtexto extends StatelessWidget {
-  const Subtexto(this.texto, {super.key, this.tamanho = 13, this.textoCentralizado = false});
+  const Subtexto(
+    this.texto, {
+    super.key,
+    this.tamanho = 13,
+    this.textoCentralizado = false,
+    this.semQuebra = false,
+  });
 
   final String texto;
   final double tamanho;
   final bool textoCentralizado;
+  final bool semQuebra;
 
   @override
   Widget build(BuildContext context) {
     return Text(
       texto,
       textAlign: textoCentralizado ? TextAlign.center : TextAlign.start,
+      maxLines: semQuebra ? 1 : null,
+      softWrap: !semQuebra,
+      overflow: semQuebra ? TextOverflow.clip : TextOverflow.clip,
       style: TextStyle(color: const Color(0xFF8E9BA8), fontSize: tamanho),
     );
   }
@@ -352,7 +370,10 @@ class CampoLinha extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 8),
         child: Row(
           children: [
-            SizedBox(width: 80, child: Subtexto(rotulo)),
+            SizedBox(
+              width: 80,
+              child: Subtexto(rotulo, semQuebra: true),
+            ),
             const SizedBox(width: 8),
             Expanded(child: campo),
           ],
@@ -364,7 +385,10 @@ class CampoLinha extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Expanded(flex: 2, child: Subtexto(rotulo)),
+          Expanded(
+            flex: 2,
+            child: Subtexto(rotulo, semQuebra: true),
+          ),
           const SizedBox(width: 8),
           Expanded(flex: 3, child: campo),
         ],

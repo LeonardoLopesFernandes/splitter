@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
+import 'widgets/dialog_sair.dart';
 
 void main() {
   runApp(const DivisorDeArquivosApp());
@@ -49,7 +50,35 @@ class DivisorDeArquivosApp extends StatelessWidget {
         ),
       ),
       locale: const Locale('pt', 'BR'),
-      home: const HomeScreen(),
+      home: const _RaizComSaida(),
+    );
+  }
+}
+
+/// Tela raiz que intercepta o gesto/voltar e pergunta antes de sair.
+class _RaizComSaida extends StatelessWidget {
+  const _RaizComSaida();
+
+  Future<void> _confirmarSaida(BuildContext context) async {
+    final sair = await showDialog<bool>(
+      context: context,
+      builder: (_) => const DialogSair(),
+    );
+    if (sair == true && context.mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _confirmarSaida(context);
+        }
+      },
+      child: const HomeScreen(),
     );
   }
 }

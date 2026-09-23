@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'merge_screen.dart';
 import 'split_screen.dart';
-import 'view_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,7 +21,6 @@ class _HomeScreenState extends State<HomeScreen> {
         children: const [
           SplitScreen(),
           MergeScreen(),
-          ViewScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -36,10 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: ImageIcon(AssetImage('assets/icons/ic_merge.png')),
             label: 'Juntar',
-          ),
-          BottomNavigationBarItem(
-            icon: ImageIcon(AssetImage('assets/icons/ic_document.png')),
-            label: 'Visualizar',
           ),
         ],
       ),

@@ -278,6 +278,35 @@ class ArquivoUtils {
     return ordenadas;
   }
 
+  /// Ordena [partes] pelo critério e direção informados.
+  /// [criterio]: 'nome', 'data' ou 'tamanho'.
+  /// [decrescente]: true para ordem decrescente.
+  static List<String> ordenarPartesPor({
+    required List<String> partes,
+    required String criterio,
+    required bool decrescente,
+  }) {
+    final ordenadas = [...partes];
+    int comparar(String a, String b) {
+      switch (criterio) {
+        case 'data':
+          return File(a)
+              .lastModifiedSync()
+              .compareTo(File(b).lastModifiedSync());
+        case 'tamanho':
+          return File(a).lengthSync().compareTo(File(b).lengthSync());
+        default:
+          return _compararNatural(a, b);
+      }
+    }
+
+    ordenadas.sort((a, b) {
+      final resultado = comparar(a, b);
+      return decrescente ? -resultado : resultado;
+    });
+    return ordenadas;
+  }
+
   static int _compararNatural(String a, String b) {
     final regex = RegExp(r'(\d+|\D+)');
     final tokensA = regex.allMatches(a).map((m) => m.group(0)!).toList();
