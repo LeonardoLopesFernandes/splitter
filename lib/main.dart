@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'screens/home_screen.dart';
 import 'widgets/dialog_sair.dart';
@@ -64,8 +65,8 @@ class _RaizComSaida extends StatelessWidget {
       context: context,
       builder: (_) => const DialogSair(),
     );
-    if (sair == true && context.mounted) {
-      Navigator.of(context).pop();
+    if (sair == true) {
+      await SystemNavigator.pop();
     }
   }
 
