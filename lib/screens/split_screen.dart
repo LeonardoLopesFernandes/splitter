@@ -47,6 +47,7 @@ class _SplitScreenState extends State<SplitScreen> {
 
   @override
   void dispose() {
+    ServicoNotificacao.removeListener(_aoDadosDoServico);
     _subscription?.cancel();
     _numeroController.dispose();
     _tamanhoController.dispose();
@@ -215,6 +216,14 @@ class _SplitScreenState extends State<SplitScreen> {
 
   Future<void> _ativarSegundoPlano() async {
     await ServicoNotificacao.pedirPermissao();
+    final params = _parametrosOperacao();
+    if (params == null) return;
+
+    // Cancela o processamento local (isolate do app); o TaskHandler
+    // (isolate do serviço) assume a operação, continuando em background.
+    await _subscription?.cancel();
+    _subscription = null;
+
     await ServicoNotificacao.iniciar(
       titulo: 'Dividindo arquivo...',
       texto: '0%',
@@ -222,6 +231,85 @@ class _SplitScreenState extends State<SplitScreen> {
     _emSegundoPlanoFoiAtivado = true;
     if (!mounted) return;
     setState(() => _emSegundoPlano = true);
+
+    ServicoNotificacao.addListener(_aoDadosDoServico);
+    await ServicoNotificacao.enviarOperacao(params);
+  }
+
+  Map<String, dynamic>? _parametrosOperacao() {
+    final nome = _nomeController.text.trim();
+    final inicio = int.tryParse(_inicioController.text.trim()) ?? 1;
+    final separador =
+        _separadorController.text.isEmpty ? '' : _separadorController.text;
+    final extensao = _extensaoController.text.trim();
+
+    if (_porNumero) {
+      final quantidade = int.tryParse(_numeroController.text.trim());
+      if (quantidade == null || quantidade <= 0) return null;
+      return {
+        'tipo': 'dividir_numero',
+        'arquivoOrigem': _arquivoSelecionado,
+        'diretorioDestino': _caminhoSaida,
+        'nome': nome,
+        'separador': separador,
+        'extensao': extensao,
+        'inicio': inicio,
+        'quantidade': quantidade,
+      };
+    }
+    final tamanho = double.tryParse(_tamanhoController.text.trim());
+    if (tamanho == null || tamanho <= 0) return null;
+    return {
+      'tipo': 'dividir_tamanho',
+      'arquivoOrigem': _arquivoSelecionado,
+      'diretorioDestino': _caminhoSaida,
+      'nome': nome,
+      'separador': separador,
+      'extensao': extensao,
+      'inicio': inicio,
+      'tamanho': tamanho,
+      'unidade': _unidade,
+    };
+  }
+
+  void _aoDadosDoServico(List<Object?> dados) {
+    if (dados.isEmpty || !mounted) return;
+    final controle = dados[0] as String;
+    switch (controle) {
+      case 'progresso':
+        setState(() {
+          _bytesLidos = dados[1] as int;
+          _bytesTotal = dados[2] as int;
+          _progresso = dados[3] as double;
+        });
+        break;
+      case 'concluido':
+        ServicoNotificacao.removeListener(_aoDadosDoServico);
+        setState(() {
+          _processando = false;
+          _emSegundoPlano = false;
+        });
+        if (_emSegundoPlanoFoiAtivado) {
+          ServicoNotificacao.parar();
+          _emSegundoPlanoFoiAtivado = false;
+        }
+        if (dados.length > 1 && dados[1] is List) {
+          _mostrarResultado((dados[1] as List).cast<String>());
+        }
+        break;
+      case 'erro':
+        ServicoNotificacao.removeListener(_aoDadosDoServico);
+        setState(() {
+          _processando = false;
+          _emSegundoPlano = false;
+          _mensagemErro = 'Falha ao dividir - ${dados[1]}';
+        });
+        if (_emSegundoPlanoFoiAtivado) {
+          ServicoNotificacao.parar();
+          _emSegundoPlanoFoiAtivado = false;
+        }
+        break;
+    }
   }
 
   void _atualizarNotificacao() {

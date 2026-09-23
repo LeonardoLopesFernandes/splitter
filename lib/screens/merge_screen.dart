@@ -45,6 +45,7 @@ class _MergeScreenState extends State<MergeScreen> {
 
   @override
   void dispose() {
+    ServicoNotificacao.removeListener(_aoDadosDoServico);
     _subscription?.cancel();
     _nomeController.dispose();
     _extensaoController.dispose();
@@ -183,6 +184,13 @@ class _MergeScreenState extends State<MergeScreen> {
 
   Future<void> _ativarSegundoPlano() async {
     await ServicoNotificacao.pedirPermissao();
+    final nome = _nomeController.text.trim();
+    if (nome.isEmpty || _partesSelecionadas.isEmpty) return;
+
+    // Cancela o processamento local; o TaskHandler assume a operação.
+    await _subscription?.cancel();
+    _subscription = null;
+
     await ServicoNotificacao.iniciar(
       titulo: 'Juntando arquivos...',
       texto: '0%',
@@ -190,6 +198,55 @@ class _MergeScreenState extends State<MergeScreen> {
     _emSegundoPlanoFoiAtivado = true;
     if (!mounted) return;
     setState(() => _emSegundoPlano = true);
+
+    ServicoNotificacao.addListener(_aoDadosDoServico);
+    await ServicoNotificacao.enviarOperacao({
+      'tipo': 'juntar',
+      'partes': _partesSelecionadas,
+      'diretorioDestino': _caminhoSaida,
+      'nome': nome,
+      'extensao': _extensaoController.text.trim(),
+    });
+  }
+
+  void _aoDadosDoServico(List<Object?> dados) {
+    if (dados.isEmpty || !mounted) return;
+    final controle = dados[0] as String;
+    switch (controle) {
+      case 'progresso':
+        setState(() {
+          _bytesLidos = dados[1] as int;
+          _bytesTotal = dados[2] as int;
+          _progresso = dados[3] as double;
+        });
+        break;
+      case 'concluido':
+        ServicoNotificacao.removeListener(_aoDadosDoServico);
+        setState(() {
+          _processando = false;
+          _emSegundoPlano = false;
+        });
+        if (_emSegundoPlanoFoiAtivado) {
+          ServicoNotificacao.parar();
+          _emSegundoPlanoFoiAtivado = false;
+        }
+        if (dados.length > 1 && dados[1] is String) {
+          _mostrarResultado(dados[1] as String);
+        }
+        break;
+      case 'erro':
+        ServicoNotificacao.removeListener(_aoDadosDoServico);
+        setState(() {
+          _processando = false;
+          _emSegundoPlano = false;
+          _mensagemErro = 'Falha ao juntar - ${dados[1]}';
+        });
+        if (_emSegundoPlanoFoiAtivado) {
+          ServicoNotificacao.parar();
+          _emSegundoPlanoFoiAtivado = false;
+        }
+        break;
+    }
   }
 
   void _atualizarNotificacao() {
