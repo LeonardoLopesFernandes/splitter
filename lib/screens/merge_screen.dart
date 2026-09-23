@@ -178,7 +178,6 @@ class _MergeScreenState extends State<MergeScreen> {
           children: [
             Column(
               children: [
-                _barraDeStatus(),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -222,41 +221,6 @@ class _MergeScreenState extends State<MergeScreen> {
               ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _barraDeStatus() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            '9:27',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-            ),
-          ),
-          Row(
-            children: [
-              Text(
-                '0,02 KB/s ',
-                style: TextStyle(color: Colors.white, fontSize: 11),
-              ),
-              Icon(Icons.alarm, size: 14, color: Colors.white),
-              SizedBox(width: 4),
-              Icon(Icons.volume_off, size: 14, color: Colors.white),
-              SizedBox(width: 4),
-              Icon(Icons.signal_cellular_alt, size: 14, color: Colors.white),
-              SizedBox(width: 4),
-              Icon(Icons.battery_full, size: 14, color: Colors.white),
-              Text('94', style: TextStyle(color: Colors.white, fontSize: 11)),
-            ],
-          ),
-        ],
       ),
     );
   }
