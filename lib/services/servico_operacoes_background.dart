@@ -50,15 +50,15 @@ class ServicoOperacoesBackground {
   }) {
     return _executar(
       tipo: 'dividir_numero',
-      parametros: _Parametros(
-        arquivoOrigem: arquivoOrigem,
-        diretorioDestino: diretorioDestino,
-        nome: nome,
-        separador: separador,
-        extensao: extensao,
-        inicio: inicio,
-        quantidade: quantidade,
-      ),
+      parametros: <String, Object>{
+        'arquivoOrigem': arquivoOrigem,
+        'diretorioDestino': diretorioDestino,
+        'nome': nome,
+        'separador': separador,
+        'extensao': extensao,
+        'inicio': inicio,
+        'quantidade': quantidade,
+      },
       titulo: 'Dividindo...',
     );
   }
@@ -76,16 +76,16 @@ class ServicoOperacoesBackground {
   }) {
     return _executar(
       tipo: 'dividir_tamanho',
-      parametros: _Parametros(
-        arquivoOrigem: arquivoOrigem,
-        diretorioDestino: diretorioDestino,
-        nome: nome,
-        separador: separador,
-        extensao: extensao,
-        inicio: inicio,
-        tamanho: tamanho,
-        unidade: unidade,
-      ),
+      parametros: <String, Object>{
+        'arquivoOrigem': arquivoOrigem,
+        'diretorioDestino': diretorioDestino,
+        'nome': nome,
+        'separador': separador,
+        'extensao': extensao,
+        'inicio': inicio,
+        'tamanho': tamanho,
+        'unidade': unidade,
+      },
       titulo: 'Dividindo...',
     );
   }
@@ -99,19 +99,19 @@ class ServicoOperacoesBackground {
   }) {
     return _executar(
       tipo: 'juntar',
-      parametros: _Parametros(
-        partes: partes,
-        diretorioDestino: diretorioDestino,
-        nome: nome,
-        extensao: extensao,
-      ),
+      parametros: <String, Object>{
+        'partes': partes,
+        'diretorioDestino': diretorioDestino,
+        'nome': nome,
+        'extensao': extensao,
+      },
       titulo: 'Juntando...',
     );
   }
 
   Stream<EventoProgressoOperacao> _executar({
     required String tipo,
-    required _Parametros parametros,
+    required Map<String, Object> parametros,
     required String titulo,
   }) {
     final controller = StreamController<EventoProgressoOperacao>();
@@ -119,7 +119,6 @@ class ServicoOperacoesBackground {
 
     receivePort.listen((mensagem) {
       if (mensagem is List) {
-        // [tipo_controle, dados]
         final controle = mensagem[0] as String;
         final dados = mensagem[1];
         switch (controle) {
@@ -163,97 +162,87 @@ class ServicoOperacoesBackground {
 
     Isolate.spawn(
       _worker,
-      (tipo, parametros, receivePort.sendPort),
-    );
+      <Object>[tipo, parametros, receivePort.sendPort],
+    ).then((isolate) {
+      // Mantém o isolate vivo enquanto a operação roda.
+      // O isolate se encerra sozinho após enviar 'concluido'/'erro'.
+    }).catchError((erro) {
+      if (!controller.isClosed) {
+        controller.add(EventoProgressoOperacao(
+          bytesLidos: 0,
+          bytesTotal: 0,
+          percentual: 0,
+          concluido: false,
+          titulo: titulo,
+          erro: 'Falha ao iniciar o processamento: $erro',
+        ));
+        controller.close();
+        receivePort.close();
+      }
+    });
 
     return controller.stream;
   }
 }
 
-class _Parametros {
-  const _Parametros({
-    this.arquivoOrigem,
-    this.diretorioDestino,
-    this.nome,
-    this.separador,
-    this.extensao,
-    this.inicio,
-    this.quantidade,
-    this.tamanho,
-    this.unidade,
-    this.partes,
-  });
-
-  final String? arquivoOrigem;
-  final String? diretorioDestino;
-  final String? nome;
-  final String? separador;
-  final String? extensao;
-  final int? inicio;
-  final int? quantidade;
-  final double? tamanho;
-  final String? unidade;
-  final List<String>? partes;
-}
-
 void _worker(dynamic mensagem) {
   final tipo = mensagem[0] as String;
-  final params = mensagem[1] as _Parametros;
+  final params = mensagem[1] as Map;
   final sendPort = mensagem[2] as SendPort;
 
   void enviarProgresso(int lidos, int total, double percentual) {
-    sendPort.send(['progresso', [lidos, total, percentual]]);
+    sendPort.send(<Object>['progresso', <Object>[lidos, total, percentual]]);
   }
 
   try {
     if (tipo == 'dividir_numero') {
       final resultado = ArquivoUtils.dividirPorNumero(
-        arquivoOrigem: params.arquivoOrigem!,
-        diretorioDestino: params.diretorioDestino!,
-        nome: params.nome!,
-        separador: params.separador!,
-        extensao: params.extensao!,
-        inicio: params.inicio!,
-        quantidade: params.quantidade!,
+        arquivoOrigem: params['arquivoOrigem'] as String,
+        diretorioDestino: params['diretorioDestino'] as String,
+        nome: params['nome'] as String,
+        separador: params['separador'] as String,
+        extensao: params['extensao'] as String,
+        inicio: params['inicio'] as int,
+        quantidade: params['quantidade'] as int,
         aoProgresso: enviarProgresso,
       );
       resultado.then((partes) {
-        sendPort.send(['concluido', [partes, 0, 0]]);
+        sendPort.send(<Object>['concluido', <Object>[partes, 0, 0]]);
       }).catchError((e) {
-        sendPort.send(['erro', e.toString()]);
+        sendPort.send(<Object>['erro', e.toString()]);
       });
     } else if (tipo == 'dividir_tamanho') {
       final resultado = ArquivoUtils.dividirPorTamanho(
-        arquivoOrigem: params.arquivoOrigem!,
-        diretorioDestino: params.diretorioDestino!,
-        nome: params.nome!,
-        separador: params.separador!,
-        extensao: params.extensao!,
-        inicio: params.inicio!,
-        tamanho: params.tamanho!,
-        unidade: params.unidade!,
+        arquivoOrigem: params['arquivoOrigem'] as String,
+        diretorioDestino: params['diretorioDestino'] as String,
+        nome: params['nome'] as String,
+        separador: params['separador'] as String,
+        extensao: params['extensao'] as String,
+        inicio: params['inicio'] as int,
+        tamanho: (params['tamanho'] as num).toDouble(),
+        unidade: params['unidade'] as String,
         aoProgresso: enviarProgresso,
       );
       resultado.then((partes) {
-        sendPort.send(['concluido', [partes, 0, 0]]);
+        sendPort.send(<Object>['concluido', <Object>[partes, 0, 0]]);
       }).catchError((e) {
-        sendPort.send(['erro', e.toString()]);
+        sendPort.send(<Object>['erro', e.toString()]);
       });
     } else if (tipo == 'juntar') {
       final resultado = ArquivoUtils.juntarArquivos(
-        partes: params.partes!,
-        diretorioDestino: params.diretorioDestino!,
-        nome: params.nome!,
-        extensao: params.extensao!,
+        partes: (params['partes'] as List).cast<String>(),
+        diretorioDestino: params['diretorioDestino'] as String,
+        nome: params['nome'] as String,
+        extensao: params['extensao'] as String,
         aoProgresso: enviarProgresso,
       );
       resultado.then((caminho) {
-        sendPort.send(['concluido', [caminho, 0, 0]]);
+        sendPort.send(<Object>['concluido', <Object>[caminho, 0, 0]]);
       }).catchError((e) {
-        sendPort.send(['erro', e.toString()]);
+        sendPort.send(<Object>['erro', e.toString()]);
       });
     }
   } catch (e) {
-    sendPort.send(['erro', e.toString()]);
+    sendPort.send(<Object>['erro', e.toString()]);
   }
 }
