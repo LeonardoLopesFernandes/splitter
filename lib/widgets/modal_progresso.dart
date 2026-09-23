@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Modal de progresso no estilo do app original: caixa branca com título,
-/// barra de progresso fina e informações (percentual + progresso/limite).
+/// Modal de progresso: caixa branca com título, barra de progresso fina,
+/// informações (percentual + progresso/limite) e botão opcional
+/// para continuar em segundo plano.
 class ModalProgresso extends StatelessWidget {
   const ModalProgresso({
     super.key,
@@ -9,12 +10,18 @@ class ModalProgresso extends StatelessWidget {
     required this.progresso,
     required this.limite,
     this.titulo = 'Processando...',
+    this.emSegundoPlano = false,
+    this.onSegundoPlano,
+    this.onCancelar,
   });
 
   final double percentual;
   final int progresso;
   final int limite;
   final String titulo;
+  final bool emSegundoPlano;
+  final VoidCallback? onSegundoPlano;
+  final VoidCallback? onCancelar;
 
   @override
   Widget build(BuildContext context) {
@@ -72,6 +79,61 @@ class ModalProgresso extends StatelessWidget {
                 ),
               ],
             ),
+            if (onSegundoPlano != null) ...[
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (onCancelar != null) ...[
+                    TextButton(
+                      onPressed: onCancelar,
+                      child: const Text(
+                        'Cancelar',
+                        style: TextStyle(color: Color(0xFF555555)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Material(
+                    color: const Color(0xFF00897B),
+                    borderRadius: BorderRadius.circular(6),
+                    elevation: 0,
+                    child: InkWell(
+                      onTap: onSegundoPlano,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.picture_in_picture_alt,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              emSegundoPlano
+                                  ? 'Em segundo plano'
+                                  : 'Segundo plano',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

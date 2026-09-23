@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'screens/home_screen.dart';
+import 'services/servico_notificacao.dart';
 import 'widgets/dialog_sair.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ServicoNotificacao.inicializar();
   runApp(const DivisorDeArquivosApp());
 }
 

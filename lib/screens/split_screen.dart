@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../services/servico_notificacao.dart';
 import '../services/servico_operacoes_background.dart';
 import '../widgets/file_browser_dialog.dart';
 import '../widgets/modal_progresso.dart';
@@ -27,10 +28,12 @@ class _SplitScreenState extends State<SplitScreen> {
   String? _caminhoSaida;
   bool _porNumero = true;
   bool _processando = false;
+  bool _emSegundoPlano = false;
   double _progresso = 0;
   int _bytesLidos = 0;
   int _bytesTotal = 1;
   String? _mensagemErro;
+  bool _emSegundoPlanoFoiAtivado = false;
   StreamSubscription<EventoProgressoOperacao>? _subscription;
 
   final _numeroController = TextEditingController(text: '2');
@@ -176,8 +179,18 @@ class _SplitScreenState extends State<SplitScreen> {
           _bytesTotal = evento.bytesTotal;
           _progresso = evento.percentual;
         });
+        if (_emSegundoPlano) {
+          _atualizarNotificacao();
+        }
         if (evento.concluido) {
-          setState(() => _processando = false);
+          setState(() {
+            _processando = false;
+            _emSegundoPlano = false;
+          });
+          if (_emSegundoPlanoFoiAtivado) {
+            ServicoNotificacao.parar();
+            _emSegundoPlanoFoiAtivado = false;
+          }
           if (evento.partes != null) {
             _mostrarResultado(evento.partes!);
           }
@@ -187,9 +200,35 @@ class _SplitScreenState extends State<SplitScreen> {
         if (!mounted) return;
         setState(() {
           _processando = false;
+          _emSegundoPlano = false;
+        });
+        if (_emSegundoPlanoFoiAtivado) {
+          ServicoNotificacao.parar();
+          _emSegundoPlanoFoiAtivado = false;
+        }
+        setState(() {
           _mensagemErro = 'Falha ao dividir - $erro';
         });
       },
+    );
+  }
+
+  Future<void> _ativarSegundoPlano() async {
+    await ServicoNotificacao.pedirPermissao();
+    await ServicoNotificacao.iniciar(
+      titulo: 'Dividindo arquivo...',
+      texto: '0%',
+    );
+    _emSegundoPlanoFoiAtivado = true;
+    if (!mounted) return;
+    setState(() => _emSegundoPlano = true);
+  }
+
+  void _atualizarNotificacao() {
+    final pct = (_progresso * 100).round();
+    ServicoNotificacao.atualizar(
+      titulo: 'Dividindo arquivo...',
+      texto: '$pct% ($_bytesLidos/$_bytesTotal)',
     );
   }
 
@@ -265,6 +304,10 @@ class _SplitScreenState extends State<SplitScreen> {
                       percentual: _progresso,
                       progresso: (_bytesLidos / (1000 * 1000)).round(),
                       limite: (_bytesTotal / (1000 * 1000)).round(),
+                      emSegundoPlano: _emSegundoPlano,
+                      onSegundoPlano: _emSegundoPlano
+                          ? null
+                          : _ativarSegundoPlano,
                     ),
                   ),
                 ),

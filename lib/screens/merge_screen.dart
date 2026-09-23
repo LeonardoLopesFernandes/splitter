@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../services/servico_notificacao.dart';
 import '../services/servico_operacoes_background.dart';
 import '../widgets/dialog_ordenacao.dart';
 import '../widgets/file_browser_dialog.dart';
@@ -31,6 +32,8 @@ class _MergeScreenState extends State<MergeScreen> {
   List<String> _partesSelecionadas = [];
   String? _caminhoSaida;
   bool _processando = false;
+  bool _emSegundoPlano = false;
+  bool _emSegundoPlanoFoiAtivado = false;
   double _progresso = 0;
   int _bytesLidos = 0;
   int _bytesTotal = 1;
@@ -144,8 +147,18 @@ class _MergeScreenState extends State<MergeScreen> {
           _bytesTotal = evento.bytesTotal;
           _progresso = evento.percentual;
         });
+        if (_emSegundoPlano) {
+          _atualizarNotificacao();
+        }
         if (evento.concluido) {
-          setState(() => _processando = false);
+          setState(() {
+            _processando = false;
+            _emSegundoPlano = false;
+          });
+          if (_emSegundoPlanoFoiAtivado) {
+            ServicoNotificacao.parar();
+            _emSegundoPlanoFoiAtivado = false;
+          }
           if (evento.caminhoResultado != null) {
             _mostrarResultado(evento.caminhoResultado!);
           }
@@ -155,9 +168,35 @@ class _MergeScreenState extends State<MergeScreen> {
         if (!mounted) return;
         setState(() {
           _processando = false;
+          _emSegundoPlano = false;
+        });
+        if (_emSegundoPlanoFoiAtivado) {
+          ServicoNotificacao.parar();
+          _emSegundoPlanoFoiAtivado = false;
+        }
+        setState(() {
           _mensagemErro = 'Falha ao juntar - $erro';
         });
       },
+    );
+  }
+
+  Future<void> _ativarSegundoPlano() async {
+    await ServicoNotificacao.pedirPermissao();
+    await ServicoNotificacao.iniciar(
+      titulo: 'Juntando arquivos...',
+      texto: '0%',
+    );
+    _emSegundoPlanoFoiAtivado = true;
+    if (!mounted) return;
+    setState(() => _emSegundoPlano = true);
+  }
+
+  void _atualizarNotificacao() {
+    final pct = (_progresso * 100).round();
+    ServicoNotificacao.atualizar(
+      titulo: 'Juntando arquivos...',
+      texto: '$pct% ($_bytesLidos/$_bytesTotal)',
     );
   }
 
@@ -229,6 +268,10 @@ class _MergeScreenState extends State<MergeScreen> {
                       progresso: (_bytesLidos / (1000 * 1000)).round(),
                       limite: (_bytesTotal / (1000 * 1000)).round(),
                       titulo: 'Juntando...',
+                      emSegundoPlano: _emSegundoPlano,
+                      onSegundoPlano: _emSegundoPlano
+                          ? null
+                          : _ativarSegundoPlano,
                     ),
                   ),
                 ),
