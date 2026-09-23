@@ -1,12 +1,12 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../widgets/file_browser_dialog.dart';
 import '../widgets/modal_progresso.dart';
 import '../widgets/theme_widgets.dart';
 
@@ -19,6 +19,9 @@ class SplitScreen extends StatefulWidget {
 
 class _SplitScreenState extends State<SplitScreen> {
   String? _arquivoSelecionado;
+  String? _arquivoNome;
+  int _arquivoTamanho = 0;
+  String? _arquivoData;
   String? _caminhoSaida;
   bool _porNumero = true;
   bool _processando = false;
@@ -48,25 +51,39 @@ class _SplitScreenState extends State<SplitScreen> {
   }
 
   Future<void> _selecionarArquivo() async {
-    final resultado = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
-      dialogTitle: 'Selecione o arquivo para dividir',
+    final caminho = await showDialog<String>(
+      context: context,
+      builder: (_) => const FileBrowserDialog(),
     );
-    if (resultado == null || resultado.files.isEmpty) return;
+    if (caminho == null || caminho.isEmpty) return;
+
+    final arquivo = File(caminho);
     setState(() {
-      _arquivoSelecionado = resultado.files.single.path;
+      _arquivoSelecionado = caminho;
+      _arquivoNome = p.basename(caminho);
+      _arquivoData = ArquivoUtils.formatarDataModificacao(arquivo);
       _mensagemErro = null;
-      if (_nomeController.text.isEmpty && _arquivoSelecionado != null) {
-        _nomeController.text = p.basenameWithoutExtension(_arquivoSelecionado!);
-        _extensaoController.text =
-            p.extension(_arquivoSelecionado!).replaceAll('.', '');
+      if (_nomeController.text.isEmpty) {
+        _nomeController.text = p.basenameWithoutExtension(caminho);
+        _extensaoController.text = p.extension(caminho).replaceAll('.', '');
       }
     });
+
+    // Obtém o tamanho de forma assíncrona (evita travar a UI com arquivos grandes).
+    try {
+      final tamanho = await arquivo.length();
+      if (!mounted) return;
+      setState(() => _arquivoTamanho = tamanho);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _arquivoTamanho = 0);
+    }
   }
 
   Future<void> _selecionarCaminho() async {
-    final caminho = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Selecione a pasta de destino',
+    final caminho = await showDialog<String>(
+      context: context,
+      builder: (_) => const FileBrowserDialog(selecionarPasta: true),
     );
     if (caminho == null || caminho.isEmpty) return;
     setState(() {
@@ -249,21 +266,17 @@ class _SplitScreenState extends State<SplitScreen> {
   }
 
   Widget _cardEntrada() {
-    final arquivo = _arquivoSelecionado == null
-        ? null
-        : File(_arquivoSelecionado!);
     return CardArquivoEntrada(
       icone: 'assets/icons/ic_input.png',
       titulo: 'Arquivo de entrada',
       botao: 'SELECIONAR',
       texto: 'Nenhum arquivo selecionado',
-      detalhes: arquivo == null
+      detalhes: _arquivoSelecionado == null
           ? null
           : DetalhesArquivo(
-              nome: p.basename(_arquivoSelecionado!),
-              tamanho: ArquivoUtils.formatarBytes(arquivo.lengthSync()),
-              dataModificacao:
-                  ArquivoUtils.formatarDataModificacao(arquivo),
+              nome: _arquivoNome ?? p.basename(_arquivoSelecionado!),
+              tamanho: ArquivoUtils.formatarBytes(_arquivoTamanho),
+              dataModificacao: _arquivoData ?? '--',
             ),
       onBotao: _selecionarArquivo,
     );
