@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'merge_screen.dart';
-import 'premium_screen.dart';
 import 'split_screen.dart';
 import 'view_screen.dart';
 
@@ -24,7 +23,6 @@ class _HomeScreenState extends State<HomeScreen> {
           SplitScreen(),
           MergeScreen(),
           ViewScreen(),
-          PremiumScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -37,15 +35,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           BottomNavigationBarItem(
             icon: ImageIcon(AssetImage('assets/icons/ic_merge.png')),
-            label: 'Unir',
+            label: 'Juntar',
           ),
           BottomNavigationBarItem(
             icon: ImageIcon(AssetImage('assets/icons/ic_document.png')),
             label: 'Visualizar',
-          ),
-          BottomNavigationBarItem(
-            icon: ImageIcon(AssetImage('assets/icons/ic_pro.png')),
-            label: 'Premium',
           ),
         ],
       ),
