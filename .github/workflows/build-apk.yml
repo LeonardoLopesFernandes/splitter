@@ -63,7 +63,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEYSTORE_PATH: android/app/upload.keystore
+          KEYSTORE_PATH: upload.keystore
         run: flutter build apk --release --split-per-abi --target-platform android-arm64
 
       - name: Enviar APK como artefato
