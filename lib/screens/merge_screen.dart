@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -7,7 +8,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../services/servico_operacoes_background.dart';
 import '../widgets/dialog_ordenacao.dart';
+import '../widgets/file_browser_dialog.dart';
 import '../widgets/modal_progresso.dart';
 
 class MergeScreen extends StatefulWidget {
@@ -32,12 +35,14 @@ class _MergeScreenState extends State<MergeScreen> {
   int _bytesLidos = 0;
   int _bytesTotal = 1;
   String? _mensagemErro;
+  StreamSubscription<EventoProgressoOperacao>? _subscription;
 
   final _nomeController = TextEditingController();
   final _extensaoController = TextEditingController();
 
   @override
   void dispose() {
+    _subscription?.cancel();
     _nomeController.dispose();
     _extensaoController.dispose();
     super.dispose();
@@ -86,8 +91,9 @@ class _MergeScreenState extends State<MergeScreen> {
   }
 
   Future<void> _selecionarCaminho() async {
-    final caminho = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Selecione a pasta de destino',
+    final caminho = await showDialog<String>(
+      context: context,
+      builder: (_) => const FileBrowserDialog(selecionarPasta: true),
     );
     if (caminho == null || caminho.isEmpty) return;
     setState(() {
@@ -123,37 +129,36 @@ class _MergeScreenState extends State<MergeScreen> {
       _bytesTotal = 1;
     });
 
-    void aoProgresso(int bytesLidos, int bytesTotal, double percentual) {
-      if (!mounted) return;
-      setState(() {
-        _bytesLidos = bytesLidos;
-        _bytesTotal = bytesTotal;
-        _progresso = percentual;
-      });
-    }
+    final stream = ServicoOperacoesBackground.instance.juntar(
+      partes: _partesSelecionadas,
+      diretorioDestino: _caminhoSaida!,
+      nome: nome,
+      extensao: _extensaoController.text.trim(),
+    );
 
-    try {
-      final resultado = await ArquivoUtils.juntarArquivos(
-        partes: _partesSelecionadas,
-        diretorioDestino: _caminhoSaida!,
-        nome: nome,
-        extensao: _extensaoController.text.trim(),
-        aoProgresso: aoProgresso,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _processando = false;
-        _mensagemErro = null;
-      });
-      _mostrarResultado(resultado);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _processando = false;
-        _mensagemErro = 'Falha ao juntar - $e';
-      });
-    }
+    _subscription = stream.listen(
+      (evento) {
+        if (!mounted) return;
+        setState(() {
+          _bytesLidos = evento.bytesLidos;
+          _bytesTotal = evento.bytesTotal;
+          _progresso = evento.percentual;
+        });
+        if (evento.concluido) {
+          setState(() => _processando = false);
+          if (evento.caminhoResultado != null) {
+            _mostrarResultado(evento.caminhoResultado!);
+          }
+        }
+      },
+      onError: (erro) {
+        if (!mounted) return;
+        setState(() {
+          _processando = false;
+          _mensagemErro = 'Falha ao juntar - $erro';
+        });
+      },
+    );
   }
 
   void _mostrarResultado(String caminho) {

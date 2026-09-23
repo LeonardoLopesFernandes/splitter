@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/arquivo_utils.dart';
 import '../services/permissao_utils.dart';
+import '../services/servico_operacoes_background.dart';
 import '../widgets/file_browser_dialog.dart';
 import '../widgets/modal_progresso.dart';
 import '../widgets/theme_widgets.dart';
@@ -29,6 +31,7 @@ class _SplitScreenState extends State<SplitScreen> {
   int _bytesLidos = 0;
   int _bytesTotal = 1;
   String? _mensagemErro;
+  StreamSubscription<EventoProgressoOperacao>? _subscription;
 
   final _numeroController = TextEditingController(text: '2');
   final _tamanhoController = TextEditingController(text: '10');
@@ -41,6 +44,7 @@ class _SplitScreenState extends State<SplitScreen> {
 
   @override
   void dispose() {
+    _subscription?.cancel();
     _numeroController.dispose();
     _tamanhoController.dispose();
     _nomeController.dispose();
@@ -124,63 +128,69 @@ class _SplitScreenState extends State<SplitScreen> {
       _bytesTotal = 1;
     });
 
-    void aoProgresso(int bytesLidos, int bytesTotal, double percentual) {
-      if (!mounted) return;
-      setState(() {
-        _bytesLidos = bytesLidos;
-        _bytesTotal = bytesTotal;
-        _progresso = percentual;
-      });
-    }
-
-    try {
-      List<String> partes;
-      if (_porNumero) {
-        final quantidade = int.tryParse(_numeroController.text.trim());
-        if (quantidade == null || quantidade <= 0) {
-          throw const FormatException('Número de arquivos inválido.');
-        }
-        partes = await ArquivoUtils.dividirPorNumero(
-          arquivoOrigem: _arquivoSelecionado!,
-          diretorioDestino: _caminhoSaida!,
-          nome: nome,
-          separador: separador,
-          extensao: extensao,
-          inicio: inicio,
-          quantidade: quantidade,
-          aoProgresso: aoProgresso,
-        );
-      } else {
-        final tamanho = double.tryParse(_tamanhoController.text.trim());
-        if (tamanho == null || tamanho <= 0) {
-          throw const FormatException('Tamanho da parte inválido.');
-        }
-        partes = await ArquivoUtils.dividirPorTamanho(
-          arquivoOrigem: _arquivoSelecionado!,
-          diretorioDestino: _caminhoSaida!,
-          nome: nome,
-          separador: separador,
-          extensao: extensao,
-          inicio: inicio,
-          tamanho: tamanho,
-          unidade: _unidade,
-          aoProgresso: aoProgresso,
-        );
+    Stream<EventoProgressoOperacao> stream;
+    if (_porNumero) {
+      final quantidade = int.tryParse(_numeroController.text.trim());
+      if (quantidade == null || quantidade <= 0) {
+        setState(() {
+          _processando = false;
+          _mensagemErro = 'Número de arquivos inválido.';
+        });
+        return;
       }
-
-      if (!mounted) return;
-      setState(() {
-        _processando = false;
-        _mensagemErro = null;
-      });
-      _mostrarResultado(partes);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _processando = false;
-        _mensagemErro = 'Falha ao dividir - $e';
-      });
+      stream = ServicoOperacoesBackground.instance.dividirPorNumero(
+        arquivoOrigem: _arquivoSelecionado!,
+        diretorioDestino: _caminhoSaida!,
+        nome: nome,
+        separador: separador,
+        extensao: extensao,
+        inicio: inicio,
+        quantidade: quantidade,
+      );
+    } else {
+      final tamanho = double.tryParse(_tamanhoController.text.trim());
+      if (tamanho == null || tamanho <= 0) {
+        setState(() {
+          _processando = false;
+          _mensagemErro = 'Tamanho da parte inválido.';
+        });
+        return;
+      }
+      stream = ServicoOperacoesBackground.instance.dividirPorTamanho(
+        arquivoOrigem: _arquivoSelecionado!,
+        diretorioDestino: _caminhoSaida!,
+        nome: nome,
+        separador: separador,
+        extensao: extensao,
+        inicio: inicio,
+        tamanho: tamanho,
+        unidade: _unidade,
+      );
     }
+
+    _subscription = stream.listen(
+      (evento) {
+        if (!mounted) return;
+        setState(() {
+          _bytesLidos = evento.bytesLidos;
+          _bytesTotal = evento.bytesTotal;
+          _progresso = evento.percentual;
+        });
+        if (evento.concluido) {
+          setState(() => _processando = false);
+          if (evento.partes != null) {
+            _mostrarResultado(evento.partes!);
+          }
+        }
+      },
+      onError: (erro) {
+        if (!mounted) return;
+        setState(() {
+          _processando = false;
+          _mensagemErro = 'Falha ao dividir - $erro';
+        });
+      },
+    );
   }
 
   void _mostrarResultado(List<String> partes) {

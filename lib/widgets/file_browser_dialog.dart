@@ -109,6 +109,60 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
+  Future<void> _criarPasta() async {
+    final controller = TextEditingController();
+    final nome = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _fundoCard,
+        title: const Text(
+          'Nova pasta',
+          style: TextStyle(color: _teal, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Nome da pasta',
+            labelStyle: TextStyle(color: _textoMuted),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'CANCELAR',
+              style: TextStyle(color: _texto),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text(
+              'CRIAR',
+              style: TextStyle(color: _teal, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (nome == null || nome.isEmpty || !mounted) return;
+    try {
+      final nova = Directory(p.join(_caminhoAtual, nome));
+      await nova.create();
+      _caminhoAtual = nova.path;
+      await _recarregar();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Não foi possível criar a pasta: $e'),
+          backgroundColor: const Color(0xFFEF5350),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -150,6 +204,12 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.create_new_folder,
+                        color: Colors.white),
+                    tooltip: 'Nova pasta',
+                    onPressed: _criarPasta,
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh, color: Colors.white),
