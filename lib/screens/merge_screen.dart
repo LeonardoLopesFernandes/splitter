@@ -187,9 +187,13 @@ class _MergeScreenState extends State<MergeScreen> {
     final nome = _nomeController.text.trim();
     if (nome.isEmpty || _partesSelecionadas.isEmpty) return;
 
-    // Cancela o processamento local; o TaskHandler assume a operação.
+    // Interrompe o processamento local (isolate do app) imediatamente.
     await _subscription?.cancel();
     _subscription = null;
+    ServicoOperacoesBackground.cancelar();
+
+    // Remove o arquivo de saída parcial que o processamento local já criou.
+    await _limparSaidaParcial(nome);
 
     await ServicoNotificacao.iniciar(
       titulo: 'Juntando arquivos...',
@@ -207,6 +211,23 @@ class _MergeScreenState extends State<MergeScreen> {
       'nome': nome,
       'extensao': _extensaoController.text.trim(),
     });
+  }
+
+  Future<void> _limparSaidaParcial(String nome) async {
+    final diretorio = _caminhoSaida;
+    final extensao = _extensaoController.text.trim();
+    if (diretorio == null) return;
+    try {
+      final caminho = extensao.isEmpty
+          ? p.join(diretorio, nome)
+          : p.join(diretorio, '$nome.$extensao');
+      final arquivo = File(caminho);
+      if (await arquivo.exists()) {
+        await arquivo.delete();
+      }
+    } catch (_) {
+      // Se não conseguir limpar, o TaskHandler informará o erro.
+    }
   }
 
   void _aoDadosDoServico(List<Object?> dados) {

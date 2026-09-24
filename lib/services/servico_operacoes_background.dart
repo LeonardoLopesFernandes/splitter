@@ -164,8 +164,7 @@ class ServicoOperacoesBackground {
       _worker,
       <Object>[tipo, parametros, receivePort.sendPort],
     ).then((isolate) {
-      // Mantém o isolate vivo enquanto a operação roda.
-      // O isolate se encerra sozinho após enviar 'concluido'/'erro'.
+      _isolateAtivo = isolate;
     }).catchError((erro) {
       if (!controller.isClosed) {
         controller.add(EventoProgressoOperacao(
@@ -182,6 +181,15 @@ class ServicoOperacoesBackground {
     });
 
     return controller.stream;
+  }
+
+  Isolate? _isolateAtivo;
+
+  /// Interrompe o processamento local (isolate) imediatamente.
+  /// Usado ao migrar para o segundo plano (TaskHandler do serviço).
+  static void cancelar() {
+    _instance._isolateAtivo?.kill(priority: Isolate.immediate);
+    _instance._isolateAtivo = null;
   }
 }
 

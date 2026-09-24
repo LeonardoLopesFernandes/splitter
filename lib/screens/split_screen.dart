@@ -219,10 +219,14 @@ class _SplitScreenState extends State<SplitScreen> {
     final params = _parametrosOperacao();
     if (params == null) return;
 
-    // Cancela o processamento local (isolate do app); o TaskHandler
-    // (isolate do serviço) assume a operação, continuando em background.
+    // Interrompe o processamento local (isolate do app) imediatamente.
     await _subscription?.cancel();
     _subscription = null;
+    ServicoOperacoesBackground.cancelar();
+
+    // Remove as partes parciais que o processamento local já criou,
+    // para que o TaskHandler reinicie do zero sem conflito.
+    await _limparPartesParciais();
 
     await ServicoNotificacao.iniciar(
       titulo: 'Dividindo arquivo...',
@@ -234,6 +238,39 @@ class _SplitScreenState extends State<SplitScreen> {
 
     ServicoNotificacao.addListener(_aoDadosDoServico);
     await ServicoNotificacao.enviarOperacao(params);
+  }
+
+  Future<void> _limparPartesParciais() async {
+    final diretorio = _caminhoSaida;
+    final nome = _nomeController.text.trim();
+    final separador =
+        _separadorController.text.isEmpty ? '' : _separadorController.text;
+    if (diretorio == null || nome.isEmpty) return;
+
+    try {
+      final dir = Directory(diretorio);
+      if (!await dir.exists()) return;
+      final entidades = await dir.list(followLinks: false).toList();
+      for (final entidade in entidades) {
+        if (entidade is File) {
+          final base = p.basename(entidade.path);
+          // Remove apenas arquivos da operação atual (nome + separador + número).
+          if (base.startsWith('$nome$separador') &&
+              _ehParteDaOperacao(base)) {
+            await entidade.delete();
+          }
+        }
+      }
+    } catch (_) {
+      // Se não conseguir limpar, o TaskHandler informará o erro.
+    }
+  }
+
+  bool _ehParteDaOperacao(String nomeBase) {
+    // Considera válido se terminar em número (opcionalmente .ext).
+    final semExt = nomeBase.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    final fim = semExt.replaceFirst(RegExp(r'^.*\D'), '');
+    return fim.isNotEmpty && int.tryParse(fim) != null;
   }
 
   Map<String, dynamic>? _parametrosOperacao() {
