@@ -14,6 +14,9 @@ import '../widgets/dialog_ordenacao.dart';
 import '../widgets/file_browser_dialog.dart';
 import '../widgets/modal_progresso.dart';
 
+import 'package:flutter_foreground_task/flutter_foreground_task.dart'
+    show NotificationPermission;
+
 class MergeScreen extends StatefulWidget {
   const MergeScreen({super.key});
 
@@ -133,6 +136,36 @@ class _MergeScreenState extends State<MergeScreen> {
       _bytesTotal = 1;
     });
 
+    // Tenta executar no TaskHandler do serviço (continua em segundo plano).
+    final permissaoNotificacao =
+        await ServicoNotificacao.pedirPermissao();
+    if (!mounted) return;
+
+    final notificacaoPermitida =
+        permissaoNotificacao == NotificationPermission.granted;
+
+    if (notificacaoPermitida) {
+      await ServicoNotificacao.iniciar(
+        titulo: 'Juntando arquivos...',
+        texto: '0%',
+      );
+      _emSegundoPlanoFoiAtivado = true;
+      ServicoNotificacao.addListener(_aoDadosDoServico);
+      setState(() {
+        _emSegundoPlano = true;
+        _mensagemErro = null;
+      });
+      await ServicoNotificacao.enviarOperacao({
+        'tipo': 'juntar',
+        'partes': _partesSelecionadas,
+        'diretorioDestino': _caminhoSaida,
+        'nome': nome,
+        'extensao': _extensaoController.text.trim(),
+      });
+      return;
+    }
+
+    // Sem permissão de notificação: executa no isolate local (só em foreground).
     final stream = ServicoOperacoesBackground.instance.juntar(
       partes: _partesSelecionadas,
       diretorioDestino: _caminhoSaida!,
@@ -148,18 +181,8 @@ class _MergeScreenState extends State<MergeScreen> {
           _bytesTotal = evento.bytesTotal;
           _progresso = evento.percentual;
         });
-        if (_emSegundoPlano) {
-          _atualizarNotificacao();
-        }
         if (evento.concluido) {
-          setState(() {
-            _processando = false;
-            _emSegundoPlano = false;
-          });
-          if (_emSegundoPlanoFoiAtivado) {
-            ServicoNotificacao.parar();
-            _emSegundoPlanoFoiAtivado = false;
-          }
+          setState(() => _processando = false);
           if (evento.caminhoResultado != null) {
             _mostrarResultado(evento.caminhoResultado!);
           }
@@ -169,65 +192,10 @@ class _MergeScreenState extends State<MergeScreen> {
         if (!mounted) return;
         setState(() {
           _processando = false;
-          _emSegundoPlano = false;
-        });
-        if (_emSegundoPlanoFoiAtivado) {
-          ServicoNotificacao.parar();
-          _emSegundoPlanoFoiAtivado = false;
-        }
-        setState(() {
           _mensagemErro = 'Falha ao juntar - $erro';
         });
       },
     );
-  }
-
-  Future<void> _ativarSegundoPlano() async {
-    await ServicoNotificacao.pedirPermissao();
-    final nome = _nomeController.text.trim();
-    if (nome.isEmpty || _partesSelecionadas.isEmpty) return;
-
-    // Interrompe o processamento local (isolate do app) imediatamente.
-    await _subscription?.cancel();
-    _subscription = null;
-    ServicoOperacoesBackground.cancelar();
-
-    // Remove o arquivo de saída parcial que o processamento local já criou.
-    await _limparSaidaParcial(nome);
-
-    await ServicoNotificacao.iniciar(
-      titulo: 'Juntando arquivos...',
-      texto: '0%',
-    );
-    _emSegundoPlanoFoiAtivado = true;
-    if (!mounted) return;
-    setState(() => _emSegundoPlano = true);
-
-    ServicoNotificacao.addListener(_aoDadosDoServico);
-    await ServicoNotificacao.enviarOperacao({
-      'tipo': 'juntar',
-      'partes': _partesSelecionadas,
-      'diretorioDestino': _caminhoSaida,
-      'nome': nome,
-      'extensao': _extensaoController.text.trim(),
-    });
-  }
-
-  Future<void> _limparSaidaParcial(String nome) async {
-    final diretorio = _caminhoSaida;
-    final extensao = _extensaoController.text.trim();
-    if (diretorio == null) return;
-    try {
-      final caminho = extensao.isEmpty
-          ? p.join(diretorio, nome)
-          : p.join(diretorio, '$nome.$extensao');
-      final arquivo = File(caminho);
-      if (await arquivo.exists()) {
-        await arquivo.delete();
-      }
-    } catch (_) {
-      // Se não conseguir limpar, o TaskHandler informará o erro.
-    }
   }
 
   void _aoDadosDoServico(List<Object?> dados) {
@@ -268,14 +236,6 @@ class _MergeScreenState extends State<MergeScreen> {
         }
         break;
     }
-  }
-
-  void _atualizarNotificacao() {
-    final pct = (_progresso * 100).round();
-    ServicoNotificacao.atualizar(
-      titulo: 'Juntando arquivos...',
-      texto: '$pct% ($_bytesLidos/$_bytesTotal)',
-    );
   }
 
   void _mostrarResultado(String caminho) {
@@ -347,9 +307,7 @@ class _MergeScreenState extends State<MergeScreen> {
                       limite: (_bytesTotal / (1000 * 1000)).round(),
                       titulo: 'Juntando...',
                       emSegundoPlano: _emSegundoPlano,
-                      onSegundoPlano: _emSegundoPlano
-                          ? null
-                          : _ativarSegundoPlano,
+                      onSegundoPlano: null,
                     ),
                   ),
                 ),

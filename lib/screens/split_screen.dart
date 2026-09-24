@@ -13,6 +13,9 @@ import '../widgets/file_browser_dialog.dart';
 import '../widgets/modal_progresso.dart';
 import '../widgets/theme_widgets.dart';
 
+import 'package:flutter_foreground_task/flutter_foreground_task.dart'
+    show NotificationPermission;
+
 class SplitScreen extends StatefulWidget {
   const SplitScreen({super.key});
 
@@ -124,6 +127,11 @@ class _SplitScreenState extends State<SplitScreen> {
     final separador =
         _separadorController.text.isEmpty ? '' : _separadorController.text;
     final extensao = _extensaoController.text.trim();
+    final params = _parametrosOperacao();
+    if (params == null) {
+      setState(() => _mensagemErro = 'Informe um número/tamanho válido.');
+      return;
+    }
 
     setState(() {
       _processando = true;
@@ -132,16 +140,32 @@ class _SplitScreenState extends State<SplitScreen> {
       _bytesTotal = 1;
     });
 
+    // Tenta executar no TaskHandler do serviço (continua em segundo plano).
+    final permissaoNotificacao =
+        await ServicoNotificacao.pedirPermissao();
+    if (!mounted) return;
+
+    final notificacaoPermitida =
+        permissaoNotificacao == NotificationPermission.granted;
+
+    if (notificacaoPermitida) {
+      await ServicoNotificacao.iniciar(
+        titulo: 'Dividindo arquivo...',
+        texto: '0%',
+      );
+      _emSegundoPlanoFoiAtivado = true;
+      ServicoNotificacao.addListener(_aoDadosDoServico);
+      setState(() {
+        _emSegundoPlano = true;
+        _mensagemErro = null;
+      });
+      await ServicoNotificacao.enviarOperacao(params);
+      return;
+    }
+
+    // Sem permissão de notificação: executa no isolate local (só em foreground).
     Stream<EventoProgressoOperacao> stream;
     if (_porNumero) {
-      final quantidade = int.tryParse(_numeroController.text.trim());
-      if (quantidade == null || quantidade <= 0) {
-        setState(() {
-          _processando = false;
-          _mensagemErro = 'Número de arquivos inválido.';
-        });
-        return;
-      }
       stream = ServicoOperacoesBackground.instance.dividirPorNumero(
         arquivoOrigem: _arquivoSelecionado!,
         diretorioDestino: _caminhoSaida!,
@@ -149,17 +173,9 @@ class _SplitScreenState extends State<SplitScreen> {
         separador: separador,
         extensao: extensao,
         inicio: inicio,
-        quantidade: quantidade,
+        quantidade: (params['quantidade'] as num).toInt(),
       );
     } else {
-      final tamanho = double.tryParse(_tamanhoController.text.trim());
-      if (tamanho == null || tamanho <= 0) {
-        setState(() {
-          _processando = false;
-          _mensagemErro = 'Tamanho da parte inválido.';
-        });
-        return;
-      }
       stream = ServicoOperacoesBackground.instance.dividirPorTamanho(
         arquivoOrigem: _arquivoSelecionado!,
         diretorioDestino: _caminhoSaida!,
@@ -167,7 +183,7 @@ class _SplitScreenState extends State<SplitScreen> {
         separador: separador,
         extensao: extensao,
         inicio: inicio,
-        tamanho: tamanho,
+        tamanho: (params['tamanho'] as num).toDouble(),
         unidade: _unidade,
       );
     }
@@ -180,18 +196,8 @@ class _SplitScreenState extends State<SplitScreen> {
           _bytesTotal = evento.bytesTotal;
           _progresso = evento.percentual;
         });
-        if (_emSegundoPlano) {
-          _atualizarNotificacao();
-        }
         if (evento.concluido) {
-          setState(() {
-            _processando = false;
-            _emSegundoPlano = false;
-          });
-          if (_emSegundoPlanoFoiAtivado) {
-            ServicoNotificacao.parar();
-            _emSegundoPlanoFoiAtivado = false;
-          }
+          setState(() => _processando = false);
           if (evento.partes != null) {
             _mostrarResultado(evento.partes!);
           }
@@ -201,76 +207,10 @@ class _SplitScreenState extends State<SplitScreen> {
         if (!mounted) return;
         setState(() {
           _processando = false;
-          _emSegundoPlano = false;
-        });
-        if (_emSegundoPlanoFoiAtivado) {
-          ServicoNotificacao.parar();
-          _emSegundoPlanoFoiAtivado = false;
-        }
-        setState(() {
           _mensagemErro = 'Falha ao dividir - $erro';
         });
       },
     );
-  }
-
-  Future<void> _ativarSegundoPlano() async {
-    await ServicoNotificacao.pedirPermissao();
-    final params = _parametrosOperacao();
-    if (params == null) return;
-
-    // Interrompe o processamento local (isolate do app) imediatamente.
-    await _subscription?.cancel();
-    _subscription = null;
-    ServicoOperacoesBackground.cancelar();
-
-    // Remove as partes parciais que o processamento local já criou,
-    // para que o TaskHandler reinicie do zero sem conflito.
-    await _limparPartesParciais();
-
-    await ServicoNotificacao.iniciar(
-      titulo: 'Dividindo arquivo...',
-      texto: '0%',
-    );
-    _emSegundoPlanoFoiAtivado = true;
-    if (!mounted) return;
-    setState(() => _emSegundoPlano = true);
-
-    ServicoNotificacao.addListener(_aoDadosDoServico);
-    await ServicoNotificacao.enviarOperacao(params);
-  }
-
-  Future<void> _limparPartesParciais() async {
-    final diretorio = _caminhoSaida;
-    final nome = _nomeController.text.trim();
-    final separador =
-        _separadorController.text.isEmpty ? '' : _separadorController.text;
-    if (diretorio == null || nome.isEmpty) return;
-
-    try {
-      final dir = Directory(diretorio);
-      if (!await dir.exists()) return;
-      final entidades = await dir.list(followLinks: false).toList();
-      for (final entidade in entidades) {
-        if (entidade is File) {
-          final base = p.basename(entidade.path);
-          // Remove apenas arquivos da operação atual (nome + separador + número).
-          if (base.startsWith('$nome$separador') &&
-              _ehParteDaOperacao(base)) {
-            await entidade.delete();
-          }
-        }
-      }
-    } catch (_) {
-      // Se não conseguir limpar, o TaskHandler informará o erro.
-    }
-  }
-
-  bool _ehParteDaOperacao(String nomeBase) {
-    // Considera válido se terminar em número (opcionalmente .ext).
-    final semExt = nomeBase.replaceFirst(RegExp(r'\.[^.]+$'), '');
-    final fim = semExt.replaceFirst(RegExp(r'^.*\D'), '');
-    return fim.isNotEmpty && int.tryParse(fim) != null;
   }
 
   Map<String, dynamic>? _parametrosOperacao() {
@@ -349,14 +289,6 @@ class _SplitScreenState extends State<SplitScreen> {
     }
   }
 
-  void _atualizarNotificacao() {
-    final pct = (_progresso * 100).round();
-    ServicoNotificacao.atualizar(
-      titulo: 'Dividindo arquivo...',
-      texto: '$pct% ($_bytesLidos/$_bytesTotal)',
-    );
-  }
-
   void _mostrarResultado(List<String> partes) {
     showDialog<void>(
       context: context,
@@ -430,9 +362,7 @@ class _SplitScreenState extends State<SplitScreen> {
                       progresso: (_bytesLidos / (1000 * 1000)).round(),
                       limite: (_bytesTotal / (1000 * 1000)).round(),
                       emSegundoPlano: _emSegundoPlano,
-                      onSegundoPlano: _emSegundoPlano
-                          ? null
-                          : _ativarSegundoPlano,
+                      onSegundoPlano: _emSegundoPlano ? null : null,
                     ),
                   ),
                 ),
