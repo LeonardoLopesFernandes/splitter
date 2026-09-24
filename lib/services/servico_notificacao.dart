@@ -74,12 +74,24 @@ class ServicoNotificacao {
       callback: operacaoCallback,
       notificationTitle: titulo,
       notificationText: texto,
+      notificationButtons: const [
+        NotificationButton(
+          id: kBotaoCancelarNotificacao,
+          text: 'Cancelar',
+        ),
+      ],
     );
   }
 
   /// Envia o JSON com os parâmetros da operação para o TaskHandler.
   static Future<void> enviarOperacao(Map<String, dynamic> parametros) async {
     FlutterForegroundTask.sendDataToTask(jsonEncode(parametros));
+  }
+
+  /// Solicita o cancelamento da operação ao TaskHandler (botão da notificação
+  /// ou chamado pela interface).
+  static Future<void> cancelarOperacao() async {
+    FlutterForegroundTask.sendDataToTask(ComandosOperacao.cancelar);
   }
 
   /// Atualiza o progresso na notificação.

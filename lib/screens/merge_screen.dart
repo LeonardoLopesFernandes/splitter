@@ -235,6 +235,33 @@ class _MergeScreenState extends State<MergeScreen> {
           _emSegundoPlanoFoiAtivado = false;
         }
         break;
+      case 'cancelado':
+        ServicoNotificacao.removeListener(_aoDadosDoServico);
+        setState(() {
+          _processando = false;
+          _emSegundoPlano = false;
+          _mensagemErro = 'Junção cancelada.';
+        });
+        if (_emSegundoPlanoFoiAtivado) {
+          ServicoNotificacao.parar();
+          _emSegundoPlanoFoiAtivado = false;
+        }
+        break;
+    }
+  }
+
+  void _cancelarOperacao() {
+    if (_emSegundoPlano) {
+      ServicoNotificacao.cancelarOperacao();
+    } else {
+      // Executando no isolate local (sem notificação): cancela o isolate.
+      _subscription?.cancel();
+      _subscription = null;
+      ServicoOperacoesBackground.cancelar();
+      setState(() {
+        _processando = false;
+        _mensagemErro = 'Junção cancelada.';
+      });
     }
   }
 
@@ -308,6 +335,7 @@ class _MergeScreenState extends State<MergeScreen> {
                       titulo: 'Juntando...',
                       emSegundoPlano: _emSegundoPlano,
                       onSegundoPlano: null,
+                      onCancelar: _cancelarOperacao,
                     ),
                   ),
                 ),

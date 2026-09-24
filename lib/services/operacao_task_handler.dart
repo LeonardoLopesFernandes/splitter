@@ -4,6 +4,11 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import 'arquivo_utils.dart';
 
+/// Exceção de cancelamento da operação em segundo plano.
+class OperacaoCanceladaException implements Exception {
+  const OperacaoCanceladaException();
+}
+
 /// Comandos enviados da UI para o TaskHandler (isolate do serviço).
 class ComandosOperacao {
   ComandosOperacao._();
@@ -11,7 +16,11 @@ class ComandosOperacao {
   static const String dividirNumero = 'dividir_numero';
   static const String dividirTamanho = 'dividir_tamanho';
   static const String juntar = 'juntar';
+  static const String cancelar = 'cancelar';
 }
+
+/// ID do botão "Cancelar" na notificação.
+const String kBotaoCancelarNotificacao = 'cancelar';
 
 /// Callback de entrada do serviço (deve ser top-level/static e
 /// anotado com @pragma('vm:entry-point') para rodar no isolate do serviço).
@@ -23,10 +32,16 @@ void operacaoCallback() {
 /// Executa a divisão/junção dentro do isolate do foreground service,
 /// garantindo que continue em segundo plano mesmo com o app em background.
 class OperacaoTaskHandler extends TaskHandler {
+  bool _cancelado = false;
+
   void _executar(Map<String, dynamic> params) {
     final tipo = params['tipo'] as String;
+    _cancelado = false;
 
     void enviarProgresso(int lidos, int total, double percentual) {
+      if (_cancelado) {
+        throw const OperacaoCanceladaException();
+      }
       final pct = (percentual * 100).round();
       FlutterForegroundTask.updateService(
         notificationTitle: _tituloPara(tipo),
@@ -88,6 +103,13 @@ class OperacaoTaskHandler extends TaskHandler {
           notificationText: 'Concluído!',
         );
         FlutterForegroundTask.stopService();
+      } on OperacaoCanceladaException {
+        FlutterForegroundTask.sendDataToMain(<Object?>['cancelado']);
+        FlutterForegroundTask.updateService(
+          notificationTitle: _tituloPara(tipo),
+          notificationText: 'Cancelado.',
+        );
+        FlutterForegroundTask.stopService();
       } catch (e) {
         FlutterForegroundTask.sendDataToMain(<Object?>['erro', e.toString()]);
         FlutterForegroundTask.updateService(
@@ -99,6 +121,10 @@ class OperacaoTaskHandler extends TaskHandler {
     }
 
     executar();
+  }
+
+  void _cancelar() {
+    _cancelado = true;
   }
 
   String _tituloPara(String tipo) {
@@ -115,12 +141,23 @@ class OperacaoTaskHandler extends TaskHandler {
   @override
   void onReceiveData(Object data) {
     if (data is String && data.isNotEmpty) {
+      if (data == ComandosOperacao.cancelar) {
+        _cancelar();
+        return;
+      }
       try {
         final mapa = jsonDecode(data) as Map<String, dynamic>;
         _executar(mapa);
       } catch (_) {
         // Dados inválidos; ignora.
       }
+    }
+  }
+
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id == kBotaoCancelarNotificacao) {
+      _cancelar();
     }
   }
 
